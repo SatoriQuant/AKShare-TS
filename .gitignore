@@ -8,10 +8,10 @@ pnpm-lock.yaml
 dist/
 build/
 out/
-*.js
-*.js.map
-*.d.ts
-*.d.ts.map
+src/**/*.js
+src/**/*.js.map
+src/**/*.d.ts
+src/**/*.d.ts.map
 
 # ==================== 测试和覆盖率 ====================
 coverage/
@@ -80,6 +80,9 @@ $RECYCLE.BIN/
 .parcel-cache/
 .eslintcache
 .stylelintcache
+
+# ==================== 子目录 git 仓库 ====================
+akshare/
 
 # ==================== 其他 ====================
 *.tgz
