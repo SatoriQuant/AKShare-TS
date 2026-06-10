@@ -2,6 +2,7 @@
 
 AKShare-TS 是对 Python 版 [AKShare](https://github.com/akfamily/akshare) 的 TypeScript 复刻实现，目标是尽可能保持接口命名与调用习惯一致，便于在 Node.js/TypeScript 生态中直接使用。
 
+npm package 地址: [https://www.npmjs.com/package/akshare-ts](https://www.npmjs.com/package/akshare-ts)
 ## 文档导航
 
 - 中文说明（当前文档）: [README.md](README.md)
@@ -31,11 +32,6 @@ console.log(stockData, etfData, bondData);
 ```
 
 ## 接口测试分类说明
-
-基于本地测试页面浏览器存储 `akshare_tester_results_v1` 与测试服务候选接口列表进行归类，规则如下：
-
-- 已测试: 测试状态为通过
-- 未测试: 未执行或测试失败（失败按未测试处理）
 
 当前统计（生成时间：2026-06-10 13:55:21）：
 
