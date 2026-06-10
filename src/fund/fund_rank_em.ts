@@ -45,13 +45,14 @@ export async function fund_open_fund_rank_em(
     gs: '0',
     sc: typeMap[symbol][1],
     st: 'desc',
-    sd: last_date.replace(/-/g, ''),
-    ed: current_date.replace(/-/g, ''),
+    sd: last_date,
+    ed: current_date,
     qdii: '',
     tabSubtype: ',,,,,',
     pi: '1',
     pn: '30000',
     dx: '1',
+    v: '0.1591891419018292',
   };
 
   try {
@@ -59,16 +60,24 @@ export async function fund_open_fund_rank_em(
       params,
       headers: {
         Referer: 'https://fund.eastmoney.com/fundguzhi.html',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Safari/537.36',
       },
     });
 
+    // Parse loose JS object notation (unquoted keys)
     const jsonStart = text.indexOf('{');
     const jsonEnd = text.lastIndexOf('}');
     if (jsonStart === -1 || jsonEnd === -1) {
       return createDataFrame([], []);
     }
 
-    const data = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+    let data: any;
+    try {
+      data = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+    } catch {
+      const fn = new Function(`return (${text.slice(jsonStart, jsonEnd + 1)})`);
+      data = fn();
+    }
 
     if (!data?.datas) {
       return createDataFrame([], []);
@@ -83,23 +92,23 @@ export async function fund_open_fund_rank_em(
     const rows = data.datas.map((item: string, index: number) => {
       const parts = item.split(',');
       return [
-        index + 1,
-        parts[0],
-        parts[2],
-        parts[3],
-        parseFloat(parts[4]) || null,
-        parseFloat(parts[5]) || null,
-        parseFloat(parts[6]) || null,
-        parseFloat(parts[7]) || null,
-        parseFloat(parts[8]) || null,
-        parseFloat(parts[9]) || null,
-        parseFloat(parts[10]) || null,
-        parseFloat(parts[11]) || null,
-        parseFloat(parts[12]) || null,
-        parseFloat(parts[13]) || null,
-        parseFloat(parts[14]) || null,
-        parseFloat(parts[15]) || null,
-        parseFloat(parts[18]) || null,
+        String(index + 1),
+        parts[0] || '',
+        parts[1] || '',
+        parts[3] || '',
+        parts[4] || '',
+        parts[5] || '',
+        parts[6] || '',
+        parts[7] || '',
+        parts[8] || '',
+        parts[9] || '',
+        parts[10] || '',
+        parts[11] || '',
+        parts[12] || '',
+        parts[13] || '',
+        parts[14] || '',
+        parts[15] || '',
+        parts[18] || '',
         parts[20] || '',
       ];
     });
@@ -126,6 +135,33 @@ export async function fund_exchange_rank_em(): Promise<DataFrame> {
     st: 'desc',
     pi: '1',
     pn: '30000',
+    v: '0.1591891419018292',
+  };
+
+  const parseLooseObject = (text: string): any => {
+    const start = text.indexOf('{');
+    if (start === -1) {
+      return null;
+    }
+    const body = text.slice(start).replace(/;\s*$/, '');
+    try {
+      return JSON.parse(body);
+    } catch {
+      const fn = new Function(`return (${body});`);
+      return fn();
+    }
+  };
+
+  const toPandasNumericString = (value: any): string => {
+    const raw = String(value ?? '').trim();
+    if (!raw) {
+      return '';
+    }
+    const num = Number(raw);
+    if (!Number.isFinite(num)) {
+      return '';
+    }
+    return Number.isInteger(num) ? num.toFixed(1) : num.toString();
   };
 
   try {
@@ -136,14 +172,7 @@ export async function fund_exchange_rank_em(): Promise<DataFrame> {
       },
     });
 
-    const jsonStart = text.indexOf('{');
-    const jsonEnd = text.lastIndexOf('}');
-    if (jsonStart === -1 || jsonEnd === -1) {
-      return createDataFrame([], []);
-    }
-
-    const data = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
-
+    const data = parseLooseObject(text);
     if (!data?.datas) {
       return createDataFrame([], []);
     }
@@ -159,20 +188,20 @@ export async function fund_exchange_rank_em(): Promise<DataFrame> {
       return [
         index + 1,
         parts[0],
-        parts[2],
+        parts[1],
         parts[21],
         parts[3],
-        parseFloat(parts[4]) || null,
-        parseFloat(parts[5]) || null,
-        parseFloat(parts[6]) || null,
-        parseFloat(parts[7]) || null,
-        parseFloat(parts[8]) || null,
-        parseFloat(parts[9]) || null,
-        parseFloat(parts[10]) || null,
-        parseFloat(parts[11]) || null,
-        parseFloat(parts[12]) || null,
-        parseFloat(parts[13]) || null,
-        parseFloat(parts[14]) || null,
+        toPandasNumericString(parts[4]),
+        toPandasNumericString(parts[5]),
+        toPandasNumericString(parts[6]),
+        toPandasNumericString(parts[7]),
+        toPandasNumericString(parts[8]),
+        toPandasNumericString(parts[9]),
+        toPandasNumericString(parts[10]),
+        toPandasNumericString(parts[11]),
+        toPandasNumericString(parts[12]),
+        toPandasNumericString(parts[13]),
+        toPandasNumericString(parts[14]),
         parts[15] || '',
       ];
     });
@@ -268,6 +297,18 @@ export async function fund_hk_rank_em(): Promise<DataFrame> {
     isbuy: '0',
   };
 
+  const toPandasNumericString = (value: any): string => {
+    const raw = String(value ?? '').trim();
+    if (!raw) {
+      return '';
+    }
+    const num = Number(raw);
+    if (!Number.isFinite(num)) {
+      return '';
+    }
+    return Number.isInteger(num) ? num.toFixed(1) : num.toString();
+  };
+
   try {
     const data = await httpGet<any>(url, {
       params,
@@ -286,26 +327,51 @@ export async function fund_hk_rank_em(): Promise<DataFrame> {
       '近2年', '近3年', '今年来', '成立来', '可购买', '香港基金代码',
     ];
 
-    const rows = data.Data.map((item: any, index: number) => [
-      index + 1,
-      item.FCODE || '',
-      item.SHORTNAME || '',
-      item.CURRENCY || '',
-      item.PDATE ? item.PDATE.split('T')[0] : '',
-      parseFloat(item.DWJZ) || null,
-      parseFloat(item.SYL_D) || null,
-      parseFloat(item.SYL_1Z) || null,
-      parseFloat(item.SYL_1Y) || null,
-      parseFloat(item.SYL_3Y) || null,
-      parseFloat(item.SYL_6Y) || null,
-      parseFloat(item.SYL_1N) || null,
-      parseFloat(item.SYL_2N) || null,
-      parseFloat(item.SYL_3N) || null,
-      parseFloat(item.SYL_JN) || null,
-      parseFloat(item.SYL_CL) || null,
-      item.ISBUY === '1' ? '可购买' : '不可购买',
-      item.HKFCode || '',
-    ]);
+    const rows = data.Data.map((item: any, index: number) => {
+      if (Array.isArray(item)) {
+        return [
+          index + 1,
+          item[2] || '',
+          item[4] || '',
+          item[20] || '',
+          item[7] || '',
+          toPandasNumericString(item[8]),
+          toPandasNumericString(item[9]),
+          toPandasNumericString(item[11]),
+          toPandasNumericString(item[12]),
+          toPandasNumericString(item[13]),
+          toPandasNumericString(item[14]),
+          toPandasNumericString(item[15]),
+          toPandasNumericString(item[16]),
+          toPandasNumericString(item[17]),
+          toPandasNumericString(item[18]),
+          toPandasNumericString(item[19]),
+          item[6] === '1' ? '可购买' : '不可购买',
+          item[1] || '',
+        ];
+      }
+
+      return [
+        index + 1,
+        item?.FCODE || '',
+        item?.SHORTNAME || '',
+        item?.CURRENCY || '',
+        item?.JZRQ || '',
+        toPandasNumericString(item?.NAV),
+        toPandasNumericString(item?.D),
+        toPandasNumericString(item?.W),
+        toPandasNumericString(item?.M),
+        toPandasNumericString(item?.Q),
+        toPandasNumericString(item?.HY),
+        toPandasNumericString(item?.Y),
+        toPandasNumericString(item?.TWY),
+        toPandasNumericString(item?.TRY),
+        toPandasNumericString(item?.SY),
+        toPandasNumericString(item?.SE),
+        item?.ISBUY === '1' ? '可购买' : '不可购买',
+        item?.HKFCODE || '',
+      ];
+    });
 
     return createDataFrame(columns, rows);
   } catch (error) {

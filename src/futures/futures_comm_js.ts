@@ -46,7 +46,7 @@ export async function futures_comm_js(date: string = '20260213'): Promise<DataFr
     const columns = [
       '日期', '合约品种', '合约代码', '手续费公布时间', '价格公布时间',
       '现价', '涨停板', '跌停板', '保证金/买开', '保证金/卖开',
-      '保证金/每手', '每手跳数', '开仓', '平昨', '平今',
+      '保证金/每手', '开仓', '平今', '平昨', '每手跳数',
       '每跳毛利', '每跳净利', '交易所',
     ];
 
@@ -62,10 +62,10 @@ export async function futures_comm_js(date: string = '20260213'): Promise<DataFr
       item.buy_ratio || '',
       item.sell_ratio || '',
       item.per_lot_price || '',
-      parseFloat(item.per_ratio) || 0,
       item.buy_commission || '',
-      item.sell_yesterday_commission || '',
       item.sell_cur_commission || '',
+      item.sell_yesterday_commission || '',
+      parseFloat(item.per_ratio) || 0,
       parseFloat(item.per_commission_price) || 0,
       parseFloat(item.per_net_profit) || 0,
       item.jys || '',

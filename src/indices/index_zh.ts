@@ -185,9 +185,9 @@ export async function stock_zh_index_spot_em_global(): Promise<DataFrame> {
  * @param endDate 结束日期，格式 "YYYYMMDD"
  */
 export async function stock_zh_index_daily_em(
-  symbol: string = 'sh000001',
+  symbol: string = 'csi931151',
   period: 'daily' | 'weekly' | 'monthly' = 'daily',
-  startDate: string = '19700101',
+  startDate: string = '19900101',
   endDate: string = '20500101'
 ): Promise<DataFrame> {
   const marketMap: Record<string, string> = { sz: '0', sh: '1', csi: '2', bj: '0' };
@@ -215,9 +215,8 @@ export async function stock_zh_index_daily_em(
   const url = 'https://push2his.eastmoney.com/api/qt/stock/kline/get';
   const params = {
     secid,
-    ut: '7eea3edcaed734bea9cbfc24409ed989',
-    fields1: 'f1,f2,f3,f4,f5,f6',
-    fields2: 'f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61',
+    fields1: 'f1,f2,f3,f4,f5',
+    fields2: 'f51,f52,f53,f54,f55,f56,f57,f58',
     klt: periodMap[period],
     fqt: '0',
     beg: startDate,
@@ -230,25 +229,18 @@ export async function stock_zh_index_daily_em(
     return createDataFrame([], []);
   }
 
-  const columns = [
-    '日期', '开盘', '收盘', '最高', '最低', '成交量', '成交额',
-    '振幅', '涨跌幅', '涨跌额', '换手率',
-  ];
+  const columns = ['date', 'open', 'close', 'high', 'low', 'volume', 'amount'];
 
   const rows = data.data.klines.map((item: string) => {
     const parts = item.split(',');
     return [
       parts[0],
-      parseFloat(parts[1]),
-      parseFloat(parts[2]),
-      parseFloat(parts[3]),
-      parseFloat(parts[4]),
-      parseInt(parts[5]),
-      parseFloat(parts[6]),
-      parseFloat(parts[7]),
-      parseFloat(parts[8]),
-      parseFloat(parts[9]),
-      parseFloat(parts[10]),
+      Number(parts[1]),
+      Number(parts[2]),
+      Number(parts[3]),
+      Number(parts[4]),
+      Number(parts[5]),
+      Number(parts[6]),
     ];
   });
 

@@ -3,7 +3,7 @@
  * https://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/stockid/600004.phtml
  */
 
-import { httpGet, httpGetText } from '../utils/httpClient';
+import { httpGet, httpGetText, httpGetTextGbk } from '../utils/httpClient';
 import { createDataFrame, DataFrame } from '../utils/dataframe';
 
 /**
@@ -54,33 +54,50 @@ export async function stock_financial_report_sina(
   const metaTitles = ['数据源', '是否审计', '公告日期', '币种', '类型', '更新日期'];
   const allTitles = [...itemTitles, ...metaTitles];
 
-  const columns = ['报告日', ...allTitles];
+  // Deduplicate column names (keep first occurrence), matching Python behavior
+  const seenColumns = new Set<string>();
+  const dedupIndices: number[] = [];
+  const dedupedTitles: string[] = [];
+  for (let i = 0; i < allTitles.length; i++) {
+    if (!seenColumns.has(allTitles[i])) {
+      seenColumns.add(allTitles[i]);
+      dedupIndices.push(i);
+      dedupedTitles.push(allTitles[i]);
+    }
+  }
+
+  const columns = ['报告日', ...dedupedTitles];
   const rows: any[][] = [];
 
   for (const dateStr of reportDates) {
     const reportData = reportList[dateStr];
     if (!reportData) continue;
 
-    const values: any[] = reportData.data.map((item: any) => {
+    const allValues: any[] = reportData.data.map((item: any) => {
       const v = item.item_value;
-      return v !== null && v !== undefined && v !== '' ? Number(v) : v;
+      return v !== null && v !== undefined && v !== '' ? String(v) : v;
     });
 
-    // Add metadata
+    // Add metadata - keep values as strings to match Python output
     const updateTime = reportData.update_time
-      ? new Date(reportData.update_time * 1000).toISOString()
+      ? String(reportData.update_time)
       : null;
 
     const metaValues = [
-      reportData.data_source || null,
-      reportData.is_audit || null,
-      reportData.publish_date || null,
-      reportData.rCurrency || null,
-      reportData.rType || null,
+      reportData.data_source ? String(reportData.data_source) : null,
+      reportData.is_audit ? String(reportData.is_audit) : null,
+      reportData.publish_date ? String(reportData.publish_date) : null,
+      reportData.rCurrency ? String(reportData.rCurrency) : null,
+      reportData.rType ? String(reportData.rType) : null,
       updateTime,
     ];
 
-    rows.push([dateStr, ...values, ...metaValues]);
+    const combinedValues = [...allValues, ...metaValues];
+
+    // Apply deduplication - only keep first occurrence of each column
+    const dedupedValues = dedupIndices.map(idx => combinedValues[idx] ?? null);
+
+    rows.push([dateStr, ...dedupedValues]);
   }
 
   return createDataFrame(columns, rows);
@@ -122,11 +139,20 @@ export async function stock_financial_abstract(symbol: string = '600004'): Promi
 
   const itemTitles = firstReport.map((item: any) => item.item_title);
 
+  // Reverse keyList to match Python's descending date order
+  const reversedKeyList = [...keyList].reverse();
+
   // Build data: rows = items, columns = report dates
-  const columns = ['选项', '指标', ...keyList];
+  const columns = ['选项', '指标', ...reversedKeyList];
   const rows: any[][] = [];
 
-  // Categorize items into groups
+  // Section header names that should be skipped as data rows
+  const sectionHeaders = new Set([
+    '常用指标', '每股指标', '盈利能力', '成长能力',
+    '收益质量', '财务风险', '营运能力',
+  ]);
+
+  // Categorize items into groups (including 常用指标 to match Python output)
   const categories = [
     { name: '常用指标', start: '常用指标', end: '每股指标' },
     { name: '每股指标', start: '每股指标', end: '盈利能力' },
@@ -140,11 +166,18 @@ export async function stock_financial_abstract(symbol: string = '600004'): Promi
   for (let i = 0; i < itemTitles.length; i++) {
     const title = itemTitles[i];
 
+    // Skip section header rows
+    if (sectionHeaders.has(title)) {
+      continue;
+    }
+
     // Find which category this item belongs to
+    // Python uses iloc[1:-1] for each category range, which excludes both
+    // the section header and the last item in the range (next header or end-of-list sentinel)
     let category = '';
     for (const cat of categories) {
       const startIdx = itemTitles.indexOf(cat.start);
-      const endIdx = cat.end ? itemTitles.indexOf(cat.end) : itemTitles.length;
+      const endIdx = cat.end ? itemTitles.indexOf(cat.end) : itemTitles.length - 1;
       if (startIdx !== -1 && i > startIdx && (endIdx === -1 || i < endIdx)) {
         category = cat.name;
         break;
@@ -152,17 +185,13 @@ export async function stock_financial_abstract(symbol: string = '600004'): Promi
     }
 
     if (!category) continue;
-    if (title === '常用指标' || title === '每股指标' || title === '盈利能力' ||
-        title === '成长能力' || title === '收益质量' || title === '财务风险' || title === '营运能力') {
-      continue;
-    }
 
     const row: any[] = [category, title];
-    for (const dateKey of keyList) {
+    for (const dateKey of reversedKeyList) {
       const reportData = reportList[dateKey]?.data;
       if (reportData && reportData[i]) {
         const v = reportData[i].item_value;
-        row.push(v !== null && v !== undefined && v !== '' ? Number(v) : v);
+        row.push(v !== null && v !== undefined && v !== '' ? String(v) : v);
       } else {
         row.push(null);
       }
@@ -338,15 +367,95 @@ export async function stock_fund_stock_holder(symbol: string = '600004'): Promis
 }
 
 /**
- * 新浪财经-股本股东-主要股东
+ * 东方财富网/新浪财经-股本股东-主要股东
+ * https://emweb.securities.eastmoney.com/PC_HSF10/ShareholderResearch/Index?type=web&code=SH600000
  *
- * @param stock 股票代码，如 "600004"
+ * @param stock 股票代码，如 "600000"
  */
 export async function stock_main_stock_holder(stock: string = '600004'): Promise<DataFrame> {
-  const columns = [
-    '截至日期', '公告日期', '股东总数', '平均持股数',
-    '编号', '股东名称', '持股数量', '持股比例',
-  ];
-  // Requires HTML parsing
-  return createDataFrame(columns, []);
+  try {
+    const { load } = await import('cheerio');
+
+    const url = `https://vip.stock.finance.sina.com.cn/corp/go.php/vCI_StockHolder/stockid/${stock}.phtml`;
+    const htmlText = await httpGetTextGbk(url);
+
+    const $ = load(htmlText);
+
+    // Find all tables - the shareholder data is in table index 13
+    const tables = $('table').toArray();
+    if (tables.length < 14) {
+      return createDataFrame([], []);
+    }
+
+    const targetTable = tables[13];
+    const rawRows: string[][] = [];
+    $(targetTable).find('tr').each((_, tr) => {
+      const cells: string[] = [];
+      $(tr).find('td, th').each((_, cell) => {
+        cells.push($(cell).text().trim().replace(/\s+/g, ' '));
+      });
+      if (cells.length > 0) {
+        rawRows.push(cells.slice(0, 5));
+      }
+    });
+
+    if (rawRows.length === 0) {
+      return createDataFrame([], []);
+    }
+
+    // Parse the structure: blocks separated by "截至日期" rows
+    const columns = ['编号', '股东名称', '持股数量', '持股比例', '股本性质', '截至日期', '公告日期', '股东说明', '股东总数', '平均持股数'];
+
+    const allRows: string[][] = [];
+    let currentEndDate = '';
+    let currentNoticeDate = '';
+    let currentHolderCount = '';
+    let currentAvgShares = '';
+
+    for (const row of rawRows) {
+      const firstCell = row[0] || '';
+
+      // Check if this is a metadata row
+      if (firstCell.startsWith('截至日期')) {
+        currentEndDate = firstCell.replace('截至日期：', '').replace('截至日期', '').trim();
+        if (row.length > 1) currentEndDate = row[1] || currentEndDate;
+      } else if (firstCell.startsWith('公告日期')) {
+        currentNoticeDate = firstCell.replace('公告日期：', '').replace('公告日期', '').trim();
+        if (row.length > 1) currentNoticeDate = row[1] || currentNoticeDate;
+      } else if (firstCell.startsWith('股东总数')) {
+        currentHolderCount = firstCell.replace('股东总数：', '').replace('股东总数', '').replace('查看变化趋势', '').trim();
+        if (row.length > 1) currentHolderCount = row[1] || currentHolderCount;
+      } else if (firstCell.startsWith('平均持股数')) {
+        currentAvgShares = firstCell.replace('平均持股数：', '').replace('平均持股数', '').replace('(按总股本计算) 查看变化趋势', '').replace('查看变化趋势', '').trim();
+        if (row.length > 1) currentAvgShares = row[1] || currentAvgShares;
+      } else if (firstCell.match(/^\d+$/)) {
+        // This is a data row (starts with a number like "1", "2", etc.)
+        const holderName = row[1] || '';
+        const shares = row[2] || '';
+        const ratio = row[3] ? row[3].replace('↓', '') : '';
+        const stockNature = row[4] || '';
+
+        allRows.push([
+          firstCell,
+          holderName,
+          shares,
+          ratio,
+          stockNature,
+          currentEndDate,
+          currentNoticeDate,
+          '',
+          currentHolderCount,
+          currentAvgShares,
+        ]);
+      }
+    }
+
+    if (allRows.length === 0) {
+      return createDataFrame([], []);
+    }
+
+    return createDataFrame(columns, allRows);
+  } catch (error) {
+    return createDataFrame([], []);
+  }
 }

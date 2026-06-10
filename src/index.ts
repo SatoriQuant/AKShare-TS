@@ -6,8 +6,6 @@
  */
 
 // Core utilities
-export * from './utils/httpClient';
-export * from './utils/errors';
 export * from './utils/types';
 export * from './utils/config';
 export * from './utils/dataframe';

@@ -35,19 +35,53 @@ export async function futures_index_ccidx(
       return createDataFrame([], []);
     }
 
-    const columns = ['日期', '指数代码', '收盘点位', '结算点位', '涨跌', '涨跌幅'];
+    // Convert createTime objects to strings
+    const dateLineJson = data.data.dateLineJson.map((item: any) => ({
+      ...item,
+      createTime: item.createTime ? JSON.stringify(item.createTime) : '',
+    }));
 
-    const rows = data.data.dateLineJson.map((item: any) => [
+    // Match Python output: all API fields with original names
+    const columns = [
+      'preSettlePrice', 'settlePriceNorm', 'dailyIncreaseAndDecreasePercentageClose',
+      '结算点位', '日期', 'oneYearAnnualizedReturnPercentage',
+      'openingPrice', 'dailyIncreaseAndDecreaseClose', 'lowPrice',
+      'threeMonthChangePercentage', 'createTime', 'highPrice',
+      'tenYearAnnualizedReturnPercentage', '指数代码', '收盘点位', '涨跌',
+      'closingPriceNorm', 'preClosingPrice', 'fiveYearAnnualizedReturnPercentage',
+      'yearToDateChangePercentage', 'sixMonthChangePercentage', 'oneMonthChangePercentage',
+      '涨跌幅', 'threeYearAnnualizedReturnPercentage',
+    ];
+
+    const rows = dateLineJson.map((item: any) => [
+      item.preSettlePrice || '',
+      item.settlePriceNorm || '',
+      item.dailyIncreaseAndDecreasePercentageClose || '',
+      item.settlePrice || '',
       item.tradeDate || '',
+      item.oneYearAnnualizedReturnPercentage || '',
+      item.openingPrice || '',
+      item.dailyIncreaseAndDecreaseClose || '',
+      item.lowPrice || '',
+      item.threeMonthChangePercentage || '',
+      item.createTime || '',
+      item.highPrice || '',
+      item.tenYearAnnualizedReturnPercentage || '',
       item.indexId || '',
-      parseFloat(item.closingPrice) || 0,
-      parseFloat(item.settlePrice) || 0,
-      parseFloat(item.dailyIncreaseAndDecrease) || 0,
-      parseFloat(item.dailyIncreaseAndDecreasePercentage) || 0,
+      item.closingPrice || '',
+      item.dailyIncreaseAndDecrease || '',
+      item.closingPriceNorm || '',
+      item.preClosingPrice || '',
+      item.fiveYearAnnualizedReturnPercentage || '',
+      item.yearToDateChangePercentage || '',
+      item.sixMonthChangePercentage || '',
+      item.oneMonthChangePercentage || '',
+      item.dailyIncreaseAndDecreasePercentage || '',
+      item.threeYearAnnualizedReturnPercentage || '',
     ]);
 
-    // Sort by date
-    rows.sort((a: any[], b: any[]) => (a[0] || '').localeCompare(b[0] || ''));
+    // Sort by date (column index 4)
+    rows.sort((a: any[], b: any[]) => String(a[4] || '').localeCompare(String(b[4] || '')));
 
     return createDataFrame(columns, rows);
   } catch {

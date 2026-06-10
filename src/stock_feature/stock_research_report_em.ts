@@ -63,29 +63,29 @@ export async function stock_research_report_em(symbol: string = '000001'): Promi
   }
 
   const columns = [
-    '序号', '报告名称', '股票简称', '股票代码', '机构',
-    '日期', `${currentYear}-盈利预测-收益`, `${currentYear}-盈利预测-市盈率`,
+    '序号', '股票代码', '股票简称', '报告名称', '东财评级', '机构', '近一月个股研报数',
+    `${currentYear}-盈利预测-收益`, `${currentYear}-盈利预测-市盈率`,
     `${currentYear + 1}-盈利预测-收益`, `${currentYear + 1}-盈利预测-市盈率`,
     `${currentYear + 2}-盈利预测-收益`, `${currentYear + 2}-盈利预测-市盈率`,
-    '行业', '评级', '评级变化', 'PDF链接',
+    '行业', '日期', '报告PDF链接',
   ];
 
   const rows = allData.map((item: any, index: number) => [
-    index + 1,
-    item.title,
-    item.stockName,
+    String(index + 1),
     item.stockCode,
-    item.orgSName,
-    item.publishDate ? new Date(item.publishDate).toISOString().split('T')[0] : null,
-    item.predictThisYearEps,
-    item.predictThisYearPe,
-    item.predictNextYearEps,
-    item.predictNextYearPe,
-    item.predictNextTwoYearEps,
-    item.predictNextTwoYearPe,
-    item.indvInduName,
+    item.stockName,
+    item.title,
     item.emRatingName,
-    item.sRatingName,
+    item.orgSName,
+    item.count != null ? String(item.count) : null,
+    item.predictThisYearEps != null ? String(item.predictThisYearEps) : null,
+    item.predictThisYearPe != null ? String(item.predictThisYearPe) : null,
+    item.predictNextYearEps != null ? String(item.predictNextYearEps) : null,
+    item.predictNextYearPe != null ? String(item.predictNextYearPe) : null,
+    item.predictNextTwoYearEps != null ? String(item.predictNextTwoYearEps) : null,
+    item.predictNextTwoYearPe != null ? String(item.predictNextTwoYearPe) : null,
+    item.indvInduName,
+    item.publishDate ? new Date(item.publishDate).toISOString().split('T')[0] : null,
     item.infoCode ? `https://pdf.dfcfw.com/pdf/H3_${item.infoCode}_1.pdf` : null,
   ]);
 
@@ -146,29 +146,29 @@ export async function stock_institute_recommend_em(symbol: string = '8000001'): 
   }
 
   const columns = [
-    '序号', '报告名称', '股票简称', '股票代码', '机构',
-    '日期', `${currentYear}-盈利预测-收益`, `${currentYear}-盈利预测-市盈率`,
+    '序号', '股票代码', '股票简称', '报告名称', '东财评级', '机构', '近一月个股研报数',
+    `${currentYear}-盈利预测-收益`, `${currentYear}-盈利预测-市盈率`,
     `${currentYear + 1}-盈利预测-收益`, `${currentYear + 1}-盈利预测-市盈率`,
     `${currentYear + 2}-盈利预测-收益`, `${currentYear + 2}-盈利预测-市盈率`,
-    '行业', '评级', '评级变化', 'PDF链接',
+    '行业', '日期', '报告PDF链接',
   ];
 
   const rows = allData.map((item: any, index: number) => [
-    index + 1,
-    item.title,
-    item.stockName,
+    String(index + 1),
     item.stockCode,
-    item.orgSName,
-    item.publishDate ? new Date(item.publishDate).toISOString().split('T')[0] : null,
-    item.predictThisYearEps,
-    item.predictThisYearPe,
-    item.predictNextYearEps,
-    item.predictNextYearPe,
-    item.predictNextTwoYearEps,
-    item.predictNextTwoYearPe,
-    item.indvInduName,
+    item.stockName,
+    item.title,
     item.emRatingName,
-    item.sRatingName,
+    item.orgSName,
+    item.count != null ? String(item.count) : null,
+    item.predictThisYearEps != null ? String(item.predictThisYearEps) : null,
+    item.predictThisYearPe != null ? String(item.predictThisYearPe) : null,
+    item.predictNextYearEps != null ? String(item.predictNextYearEps) : null,
+    item.predictNextYearPe != null ? String(item.predictNextYearPe) : null,
+    item.predictNextTwoYearEps != null ? String(item.predictNextTwoYearEps) : null,
+    item.predictNextTwoYearPe != null ? String(item.predictNextTwoYearPe) : null,
+    item.indvInduName,
+    item.publishDate ? new Date(item.publishDate).toISOString().split('T')[0] : null,
     item.infoCode ? `https://pdf.dfcfw.com/pdf/H3_${item.infoCode}_1.pdf` : null,
   ]);
 

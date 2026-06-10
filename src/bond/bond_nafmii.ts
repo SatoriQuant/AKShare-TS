@@ -19,7 +19,7 @@ import {
 export async function bond_debt_nafmii(page: string = '1'): Promise<DataFrame> {
   const url = 'http://zhuce.nafmii.org.cn/fans/publicQuery/releFileProjDataGrid';
 
-  const payload = {
+  const payload = new URLSearchParams({
     regFileName: '',
     itemType: '',
     startTime: '',
@@ -28,13 +28,25 @@ export async function bond_debt_nafmii(page: string = '1'): Promise<DataFrame> {
     leadManager: '',
     regPrdtType: '',
     page,
-    rows: 50,
+    rows: '50',
+  });
+
+  const formatDateOnly = (value: any): string => {
+    const raw = String(value ?? '').trim();
+    if (!raw) {
+      return '';
+    }
+    return raw.split(' ')[0];
   };
 
   try {
-    const data = await httpPost<any>(url, payload);
+    const data = await httpPost<any>(url, payload.toString(), {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    });
 
-    if (!data?.rows) {
+    if (!Array.isArray(data?.rows) || data.rows.length === 0) {
       return createDataFrame([], []);
     }
 
@@ -47,9 +59,11 @@ export async function bond_debt_nafmii(page: string = '1'): Promise<DataFrame> {
       item.regFileName,
       item.regPrdtType,
       item.isReg,
-      parseFloat(item.firstIssueAmount) || null,
+      item.firstIssueAmount === null || item.firstIssueAmount === undefined || item.firstIssueAmount === ''
+        ? null
+        : Number(item.firstIssueAmount),
       item.regNoticeNo || '',
-      item.releaseTime,
+      formatDateOnly(item.releaseTime),
       item.projPhase,
     ]);
 

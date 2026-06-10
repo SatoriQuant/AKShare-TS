@@ -85,7 +85,7 @@ export async function option_hist_yearly_czce(
 
     // 第一行是标题，跳过
     const headerLine = lines[1]; // 第二行通常是列名
-    const columns = headerLine.split('|').map(h => h.trim()).filter(h => h);
+    const columns = headerLine.split('|').map(h => h).filter(h => h.trim());
 
     if (columns.length === 0) {
       return createDataFrame([], []);
@@ -93,10 +93,10 @@ export async function option_hist_yearly_czce(
 
     const rows: any[][] = [];
     for (let i = 2; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
+      const line = lines[i];
+      if (!line.trim()) continue;
 
-      const parts = line.split('|').map(p => p.trim()).filter(p => p);
+      const parts = line.split('|').map(p => p);
       if (parts.length >= columns.length) {
         rows.push(parts.slice(0, columns.length));
       }

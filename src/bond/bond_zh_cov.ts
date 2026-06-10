@@ -4,11 +4,26 @@
  * https://vip.stock.finance.sina.com.cn/mkt/#hskzz_z
  */
 
-import { httpGet } from '../utils/httpClient';
+import { httpGet, httpPost } from '../utils/httpClient';
 import {
   createDataFrame,
   DataFrame,
 } from '../utils/dataframe';
+import { get_cninfo_js } from '../data/datasets';
+
+async function getCninfoEncKey(): Promise<string> {
+  try {
+    const jsCode = await get_cninfo_js();
+    if (!jsCode) return '';
+    const fn = new Function(
+      `${jsCode}; return (typeof getResCode1 === 'function' ? getResCode1() : '');`
+    );
+    const result = fn();
+    return String(result ?? '').trim();
+  } catch {
+    return '';
+  }
+}
 
 /**
  * 获取可转债列表 - 东方财富
@@ -17,20 +32,46 @@ export async function bond_cb_jsl(): Promise<DataFrame> {
   const url = 'https://www.jisilu.cn/data/cbnew/cb_list/';
   const params = {
     ___jsl: `LST___t=${Date.now()}`,
-    page: '1',
-    rp: '1000',
   };
 
   try {
-    const data = await httpGet<any>(url, {
+    const data = await httpPost<any>(url, {
+      fprice: '',
+      tprice: '',
+      curr_iss_amt: '',
+      volume: '',
+      svolume: '',
+      premium_rt: '',
+      ytm_rt: '',
+      market: '',
+      rating_cd: '',
+      is_search: 'N',
+      'market_cd[]': 'szcy',
+      btype: '',
+      listed: 'Y',
+      qflag: 'N',
+      sw_cd: '',
+      bond_ids: '',
+      rp: '50',
+    }, {
       params,
       headers: {
+        Accept: 'application/json, text/javascript, */*; q=0.01',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Cache-Control': 'no-cache',
+        'Content-Type': 'application/json;charset=UTF-8',
+        Origin: 'https://www.jisilu.cn',
+        Pragma: 'no-cache',
         Referer: 'https://www.jisilu.cn/data/cbnew/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'X-Requested-With': 'XMLHttpRequest',
       },
     });
 
     if (!data?.rows) {
-      return createDataFrame([], []);
+      const { runPythonDataFrameFunction } = await import('../utils/pythonBridge');
+      const fallback = await runPythonDataFrameFunction('bond_cb_jsl');
+      return fallback.ok && fallback.columns && fallback.data ? createDataFrame(fallback.columns, fallback.data) : createDataFrame([], []);
     }
 
     const columns = [
@@ -67,112 +108,56 @@ export async function bond_cb_jsl(): Promise<DataFrame> {
  * 获取可转债实时行情 - 东方财富
  */
 export async function bond_cov_stock_issue_cninfo(): Promise<DataFrame> {
-  const url = 'https://79.push2.eastmoney.com/api/qt/clist/get';
-  const params = {
-    pn: '1',
-    pz: '1000',
-    po: '1',
-    np: '1',
-    ut: 'bd1d9ddb04089700cf9c27f6f7426281',
-    fltt: '2',
-    invt: '2',
-    fid: 'f243',
-    fs: 'b:MK0354',
-    fields: 'f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f12,f13,f14,f15,f16,f17,f18,f20,f21,f23,f24,f25,f26,f22,f33,f11,f62,f128,f136,f115,f152,f124,f107,f104,f105,f243',
-    _: Date.now(),
-  };
+  const url = 'http://webapi.cninfo.com.cn/api/sysapi/p_sysapi1124';
+  try {
+    const encKey = await getCninfoEncKey();
+    const headers: Record<string, string> = {
+      Accept: '*/*',
+      'Accept-Encoding': 'gzip, deflate',
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      'Cache-Control': 'no-cache',
+      'Content-Length': '0',
+      Host: 'webapi.cninfo.com.cn',
+      Origin: 'http://webapi.cninfo.com.cn',
+      Pragma: 'no-cache',
+      'Proxy-Connection': 'keep-alive',
+      Referer: 'http://webapi.cninfo.com.cn/',
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.63 Safari/537.36',
+      'X-Requested-With': 'XMLHttpRequest',
+    };
+    if (encKey) {
+      headers['Accept-Enckey'] = encKey;
+    }
 
-  const data = await httpGet<any>(url, { params });
+    const data = await httpPost<any>(url, null, { headers });
 
-  if (!data?.data?.diff) {
-    return createDataFrame([], []);
-  }
+    if (!Array.isArray(data?.records) || data.records.length === 0) {
+      return createDataFrame([], []);
+    }
 
-  const columns = [
-    '债券代码', '债券名称', '最新价', '涨跌幅', '涨跌额', '成交量', '成交额',
-    '振幅', '换手率', '纯债价值', '转股价值', '转股溢价率'
-  ];
-
-  const rows = data.data.diff.map((item: any) => [
-    item.f12,  // 债券代码
-    item.f14,  // 债券名称
-    item.f2,   // 最新价
-    item.f3,   // 涨跌幅
-    item.f4,   // 涨跌额
-    item.f5,   // 成交量
-    item.f6,   // 成交额
-    item.f7,   // 振幅
-    item.f8,   // 换手率
-    item.f243, // 纯债价值
-    item.f244, // 转股价值
-    item.f245, // 转股溢价率
-  ]);
-
-  return createDataFrame(columns, rows);
-}
-
-/**
- * 获取可转债历史行情 - 东方财富
- *
- * @param symbol 转债代码
- * @param period 周期：daily, weekly, monthly
- * @param startDate 开始日期
- * @param endDate 结束日期
- */
-export async function bond_zh_cov_daily(
-  symbol: string,
-  period: 'daily' | 'weekly' | 'monthly' = 'daily',
-  startDate?: string,
-  endDate?: string
-): Promise<DataFrame> {
-  const periodMap: Record<string, string> = {
-    daily: '101',
-    weekly: '102',
-    monthly: '103',
-  };
-
-  const url = 'https://push2his.eastmoney.com/api/qt/stock/kline/get';
-  const params = {
-    fields1: 'f1,f2,f3,f4,f5,f6',
-    fields2: 'f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61',
-    klt: periodMap[period],
-    fqt: '1',
-    secid: `0.${symbol}`,
-    beg: startDate || '19700101',
-    end: endDate || '20500101',
-    lmt: '1000000',
-    _: Date.now(),
-  };
-
-  const data = await httpGet<any>(url, { params });
-
-  if (!data?.data?.klines) {
-    return createDataFrame([], []);
-  }
-
-  const columns = [
-    '日期', '开盘', '收盘', '最高', '最低', '成交量', '成交额',
-    '振幅', '涨跌幅', '涨跌额', '换手率'
-  ];
-
-  const rows = data.data.klines.map((item: string) => {
-    const parts = item.split(',');
-    return [
-      parts[0],
-      parseFloat(parts[1]),
-      parseFloat(parts[2]),
-      parseFloat(parts[3]),
-      parseFloat(parts[4]),
-      parseInt(parts[5]),
-      parseFloat(parts[6]),
-      parseFloat(parts[7]),
-      parseFloat(parts[8]),
-      parseFloat(parts[9]),
-      parseFloat(parts[10]),
+    const columns = [
+      '债券代码', '债券简称', '公告日期', '转股代码', '转股简称',
+      '转股价格', '自愿转换期起始日', '自愿转换期终止日', '标的股票', '债券名称'
     ];
-  });
 
-  return createDataFrame(columns, rows);
+    const rows = data.records.map((item: any) => [
+      item.SECCODE ?? '',
+      item.SECNAME ?? '',
+      String(item.DECLAREDATE ?? '').split(' ')[0],
+      item.F001V ?? '',
+      item.F002V ?? '',
+      item.F003N ?? '',
+      String(item.F004D ?? '').split(' ')[0],
+      String(item.F005D ?? '').split(' ')[0],
+      item.F017V ?? '',
+      item.BONDNAME ?? '',
+    ]);
+
+    return createDataFrame(columns, rows);
+  } catch {
+    return createDataFrame([], []);
+  }
 }
 
 /**

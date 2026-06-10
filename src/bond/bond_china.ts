@@ -50,44 +50,125 @@ export async function bond_china_yield(date?: string): Promise<DataFrame> {
  * 获取中国国债收益率历史数据 - 东方财富
  */
 export async function bond_zh_us_rate(startYear?: string): Promise<DataFrame> {
-  const url = 'https://datacenter-web.eastmoney.com/api/data/v1/get';
-  const params = {
-    reportName: 'RPT_BOND_GOV_CN_US_RATE',
-    columns: 'ALL',
-    filter: startYear ? `(REPORT_DATE>='${startYear}-01-01')` : '',
-    pageNumber: '1',
-    pageSize: '10000',
-    sortTypes: '1',
-    sortColumns: 'REPORT_DATE',
-    source: 'WEB',
-    client: 'WEB',
-    _: Date.now(),
+  const url = 'https://datacenter.eastmoney.com/api/data/get';
+  const pageSize = 500;
+  const baseParams = {
+    type: 'RPTA_WEB_TREASURYYIELD',
+    sty: 'ALL',
+    st: 'SOLAR_DATE',
+    sr: '-1',
+    token: '894050c76af8597a853f5b408b759f5d',
+    ps: String(pageSize),
   };
 
-  const data = await httpGet<any>(url, { params });
+  const toStartDate = (input?: string): string => {
+    if (!input) return '19901219';
+    const compact = input.replace(/[^\d]/g, '');
+    if (compact.length === 8) return compact;
+    if (compact.length === 4) return `${compact}0101`;
+    return '19901219';
+  };
 
-  if (!data?.result?.data) {
+  const formatDate = (value: any): string => {
+    const raw = String(value ?? '').trim();
+    if (!raw) return '';
+    const datePart = raw.includes(' ') ? raw.split(' ')[0] : raw;
+    return datePart;
+  };
+
+  const startDate = toStartDate(startYear);
+  const startDateObj = new Date(`${startDate.slice(0, 4)}-${startDate.slice(4, 6)}-${startDate.slice(6, 8)}`);
+
+  const firstPage = await httpGet<any>(url, {
+    params: {
+      ...baseParams,
+      p: '1',
+      pageNo: '1',
+      pageNum: '1',
+    },
+  });
+
+  const totalPages = Number(firstPage?.result?.pages ?? 0);
+  if (!Number.isFinite(totalPages) || totalPages <= 0) {
+    return createDataFrame([], []);
+  }
+
+  const allRows: any[] = [];
+  for (let page = 1; page <= totalPages; page++) {
+    const pageData = page === 1
+      ? firstPage
+      : await httpGet<any>(url, {
+          params: {
+            ...baseParams,
+            p: String(page),
+            pageNo: String(page),
+            pageNum: String(page),
+          },
+        });
+
+    const currentRows = pageData?.result?.data;
+    if (Array.isArray(currentRows) && currentRows.length > 0) {
+      allRows.push(...currentRows);
+
+      const lastDate = formatDate(currentRows[currentRows.length - 1]?.SOLAR_DATE);
+      if (lastDate) {
+        const lastDateObj = new Date(lastDate);
+        if (!Number.isNaN(lastDateObj.getTime()) && lastDateObj <= startDateObj) {
+          break;
+        }
+      }
+    }
+  }
+
+  if (allRows.length === 0) {
     return createDataFrame([], []);
   }
 
   const columns = [
-    '日期', '中国2年', '中国5年', '中国10年', '中国30年',
-    '美国2年', '美国5年', '美国10年', '美国30年'
+    '日期',
+    '中国国债收益率2年',
+    '中国国债收益率5年',
+    '中国国债收益率10年',
+    '中国国债收益率30年',
+    '中国国债收益率10年-2年',
+    '中国GDP年增率',
+    '美国国债收益率2年',
+    '美国国债收益率5年',
+    '美国国债收益率10年',
+    '美国国债收益率30年',
+    '美国国债收益率10年-2年',
+    '美国GDP年增率',
   ];
 
-  const rows = data.result.data.map((item: any) => [
-    item.REPORT_DATE,
-    item.CN_2Y,
-    item.CN_5Y,
-    item.CN_10Y,
-    item.CN_30Y,
-    item.US_2Y,
-    item.US_5Y,
-    item.US_10Y,
-    item.US_30Y,
-  ]);
+  const rows = allRows
+    .map((item: any) => {
+      const date = formatDate(item?.SOLAR_DATE);
+      return [
+        date,
+        item?.EMM00588704 ?? '',
+        item?.EMM00166462 ?? '',
+        item?.EMM00166466 ?? '',
+        item?.EMM00166469 ?? '',
+        item?.EMM01276014 ?? '',
+        item?.EMM00000024 ?? '',
+        item?.EMG00001306 ?? '',
+        item?.EMG00001308 ?? '',
+        item?.EMG00001310 ?? '',
+        item?.EMG00001312 ?? '',
+        item?.EMG01339436 ?? '',
+        item?.EMG00159635 ?? '',
+      ];
+    })
+    .filter((row: any[]) => row[0])
+    .sort((a: any[], b: any[]) => String(a[0]).localeCompare(String(b[0])));
 
-  return createDataFrame(columns, rows);
+  const filteredRows = rows.filter((row: any[]) => {
+    const d = new Date(String(row[0]));
+    if (Number.isNaN(d.getTime())) return false;
+    return d >= startDateObj;
+  });
+
+  return createDataFrame(columns, filteredRows);
 }
 
 /**

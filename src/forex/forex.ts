@@ -12,44 +12,45 @@ import {
  * 获取外汇实时行情 - 东方财富
  */
 export async function forex_spot_em(): Promise<DataFrame> {
-  const url = 'https://79.push2.eastmoney.com/api/qt/clist/get';
-  const params = {
-    pn: '1',
-    pz: '100',
-    po: '1',
+  const url = 'https://push2.eastmoney.com/api/qt/clist/get';
+  const baseParams = {
     np: '1',
-    ut: 'bd1d9ddb04089700cf9c27f6f7426281',
     fltt: '2',
     invt: '2',
+    fs: 'm:119,m:120,m:133',
+    fields: 'f12,f13,f14,f1,f2,f4,f3,f152,f17,f18,f15,f16',
     fid: 'f3',
-    fs: 'm:119',
-    fields: 'f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f12,f13,f14,f15,f16,f17,f18,f20,f21,f23,f24,f25,f22,f11,f62,f128,f136,f115,f152',
-    _: Date.now(),
+    po: '1',
+    dect: '1',
+    wbp2u: '|0|0|0|web',
+    pz: '100',
   };
 
-  const data = await httpGet<any>(url, { params });
+  const columns = ['序号', '代码', '名称', '最新价', '涨跌额', '涨跌幅', '今开', '最高', '最低', '昨收'];
+  const rows: any[][] = [];
 
-  if (!data?.data?.diff) {
-    return createDataFrame([], []);
+  for (let page = 1; page <= 100; page++) {
+    const data = await httpGet<any>(url, { params: { ...baseParams, pn: String(page) } });
+    const diff = data?.data?.diff;
+    if (!Array.isArray(diff) || diff.length === 0) {
+      break;
+    }
+
+    for (const item of diff) {
+      rows.push([
+        rows.length + 1,
+        item.f12,
+        item.f14,
+        item.f2,
+        item.f4,
+        item.f3,
+        item.f17,
+        item.f15,
+        item.f16,
+        item.f18,
+      ]);
+    }
   }
-
-  const columns = [
-    '货币代码', '货币名称', '最新价', '涨跌幅', '涨跌额', '开盘', '最高',
-    '最低', '昨收', '成交量'
-  ];
-
-  const rows = data.data.diff.map((item: any) => [
-    item.f12,  // 货币代码
-    item.f14,  // 货币名称
-    item.f2,   // 最新价
-    item.f3,   // 涨跌幅
-    item.f4,   // 涨跌额
-    item.f17,  // 开盘
-    item.f15,  // 最高
-    item.f16,  // 最低
-    item.f18,  // 昨收
-    item.f5,   // 成交量
-  ]);
 
   return createDataFrame(columns, rows);
 }

@@ -53,21 +53,26 @@ export async function stock_zdhtmx_em(
   }
 
   const columns = [
-    '序号', '股票代码', '股票简称', '合同名称', '合同类型',
-    '合同金额', '签署主体', '与上市公司关系', '其他签署方',
+    '序号', '股票代码', '股票简称', '签署主体', '签署主体-与上市公司关系',
+    '其他签署方', '其他签署方-与上市公司关系', '合同类型', '合同名称', '合同金额',
+    '上年度营业收入', '占上年度营业收入比例', '最新财务报表的营业收入',
     '签署日期', '公告日期',
   ];
 
   const rows = allData.map((item: any, index: number) => [
-    index + 1,
+    String(index + 1),
     item.SECURITYCODE,
     item.SECURITYSHORTNAME,
-    item.CONTRACTNAME,
-    item.CONTRACTTYPENAME,
-    item.AMOUNTS,
     item.SIGNATORY,
-    item.SIGNATORYREL,
+    item.SIGNATORYRELNAME,
     item.COUNTERPARTY,
+    item.COUNTERPARTYRELNAME,
+    item.CONTRACTTYPENAME,
+    item.CONTRACTNAME,
+    item.AMOUNTS != null ? String(item.AMOUNTS) : null,
+    item.SNDYYSR != null ? String(item.SNDYYSR) : null,
+    item.ZSNDYYSRBL != null ? String(item.ZSNDYYSRBL) : null,
+    item.OPERATEREVE != null ? String(item.OPERATEREVE) : null,
     item.SIGNDATE ? new Date(item.SIGNDATE).toISOString().split('T')[0] : null,
     item.DIM_RDATE ? new Date(item.DIM_RDATE).toISOString().split('T')[0] : null,
   ]);

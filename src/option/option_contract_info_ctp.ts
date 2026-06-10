@@ -26,7 +26,8 @@ export async function option_contract_info_ctp(): Promise<DataFrame> {
 
     const columns = [
       '交易所ID', '合约ID', '合约名称', '商品类别', '品种ID',
-      '合约乘数', '最小变动价位', '做多保证金率', '做空保证金率',
+      '合约乘数', '最小变动价位', 'MinLimitOrderVolume', 'MaxLimitOrderVolume',
+      '做多保证金率', '做空保证金率',
       '做多保证金/手', '做空保证金/手', '开仓手续费率', '开仓手续费/手',
       '平仓手续费率', '平仓手续费/手', '平今手续费率', '平今手续费/手',
       '交割年份', '交割月份', '上市日期', '最后交易日', '交割日',
@@ -41,6 +42,8 @@ export async function option_contract_info_ctp(): Promise<DataFrame> {
       item.ProductID,
       parseFloat(item.VolumeMultiple) || null,
       parseFloat(item.PriceTick) || null,
+      item.MinLimitOrderVolume != null ? String(item.MinLimitOrderVolume) : null,
+      item.MaxLimitOrderVolume != null ? String(item.MaxLimitOrderVolume) : null,
       parseFloat(item.LongMarginRatioByMoney) || null,
       parseFloat(item.ShortMarginRatioByMoney) || null,
       parseFloat(item.LongMarginRatioByVolume) || null,

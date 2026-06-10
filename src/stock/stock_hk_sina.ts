@@ -3,12 +3,12 @@
  * https://stock.finance.sina.com.cn/hkstock/quotes/00700.html
  */
 
-import { httpGetText } from '../utils/httpClient';
+import { httpGetText, httpGet } from '../utils/httpClient';
 import {
   createDataFrame,
   DataFrame,
-  convertColumn,
 } from '../utils/dataframe';
+import { decodeSinaData } from '../utils/jsDecode';
 
 /**
  * 新浪财经-港股所有港股的实时行情数据
@@ -23,49 +23,60 @@ export async function stock_hk_spot(
 ): Promise<DataFrame> {
   const url =
     'https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHKStockData';
-  const params = {
-    page: page.toString(),
-    num: pageSize.toString(),
-    sort: 'symbol',
-    asc: '1',
-    node: 'qbgg_hk',
-    _s_r_a: 'init',
+
+  const columns = [
+    '日期时间', '代码', '中文名称', '英文名称', '交易类型',
+    '最新价', '涨跌额', '涨跌幅', '昨收', '今开',
+    '最高', '最低', '成交量', '成交额', '买一', '卖一',
+  ];
+
+  const rows: any[][] = [];
+  const toNum = (v: any): number | null => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
   };
 
   try {
-    const text = await httpGetText(url, { params });
-    const data = JSON.parse(text);
+    for (let p = page; p < 100; p++) {
+      const params = {
+        page: String(p),
+        num: String(pageSize),
+        sort: 'symbol',
+        asc: '1',
+        node: 'qbgg_hk',
+        _s_r_a: 'init',
+      };
+      const text = await httpGetText(url, { params });
+      const data = JSON.parse(text);
 
-    if (!Array.isArray(data) || data.length === 0) {
-      return createDataFrame([], []);
+      if (!Array.isArray(data) || data.length === 0) {
+        break;
+      }
+
+      for (const item of data) {
+        rows.push([
+          item.ticktime ?? '',
+          item.symbol ?? '',
+          item.name ?? '',
+          item.engname ?? '',
+          item.tradetype ?? '',
+          toNum(item.lasttrade),
+          toNum(item.pricechange),
+          toNum(item.changepercent),
+          toNum(item.prevclose),
+          toNum(item.open),
+          toNum(item.high),
+          toNum(item.low),
+          toNum(item.volume),
+          toNum(item.amount),
+          toNum(item.buy),
+          toNum(item.sell),
+        ]);
+      }
     }
 
-    const columns = [
-      '代码', '中文名称', '英文名称', '交易类型',
-      '最新价', '涨跌额', '涨跌幅', '昨收', '今开',
-      '最高', '最低', '成交量', '成交额', '买一', '卖一',
-    ];
-
-    const rows = data.map((item: any) => [
-      item.symbol,
-      item.name,
-      item.engname,
-      item.type,
-      parseFloat(item.trade) || NaN,
-      parseFloat(item.pricechange) || NaN,
-      parseFloat(item.changepercent) || NaN,
-      parseFloat(item.settlement) || NaN,
-      parseFloat(item.open) || NaN,
-      parseFloat(item.high) || NaN,
-      parseFloat(item.low) || NaN,
-      parseInt(item.volume) || NaN,
-      parseFloat(item.amount) || NaN,
-      parseFloat(item.buy) || NaN,
-      parseFloat(item.sell) || NaN,
-    ]);
-
     return createDataFrame(columns, rows);
-  } catch (error) {
+  } catch {
     return createDataFrame([], []);
   }
 }
@@ -74,6 +85,8 @@ export async function stock_hk_spot(
  * 新浪财经-港股-个股的历史行情数据
  * https://stock.finance.sina.com.cn/hkstock/quotes/02912.html
  *
+ * Uses Sina's klc2_kl.js endpoint with JS decoding (same as Python AKShare).
+ *
  * @param symbol 港股代码，如 "00700"
  * @param adjust 复权类型：qfq 前复权, hfq 后复权, "" 不复权
  */
@@ -81,44 +94,152 @@ export async function stock_hk_daily(
   symbol: string = '00700',
   adjust: 'qfq' | 'hfq' | '' = ''
 ): Promise<DataFrame> {
-  // Use the Sina K-line API for Hong Kong stocks
-  const url = `https://quotes.sina.cn/hkstock/api/jsonp.php/callback/HK_StockService.getHKStockDailyKLine`;
-  const params = {
-    symbol: symbol,
-    scale: '240',
-    datalen: '10000',
-  };
-
   try {
-    const text = await httpGetText(url, { params });
+    // Step 1: Get unadjusted historical data from Sina's encoded endpoint
+    const histUrl = `https://finance.sina.com.cn/stock/hkstock/${symbol}/klc2_kl.js`;
+    const histText = await httpGetText(histUrl, {
+      headers: {
+        Referer: `https://stock.finance.sina.com.cn/hkstock/quotes/${symbol}.html`,
+      },
+    });
 
-    // Parse JSONP response
-    const match = text.match(/\((\[.*\])\)/s);
-    if (!match) {
+    // Extract the encoded string: var xx = "encoded_data";
+    const encodedMatch = histText.split('=');
+    if (encodedMatch.length < 2) {
+      return createDataFrame([], []);
+    }
+    const encodedStr = encodedMatch[1].split(';')[0].replace(/"/g, '');
+
+    // Decode using the hk_js_decode algorithm
+    const decoded = decodeSinaData(encodedStr);
+    if (!decoded || decoded.length === 0) {
       return createDataFrame([], []);
     }
 
-    const data = JSON.parse(match[1]);
+    // Build base DataFrame from decoded data
+    // Each item has: { date: Date, open, high, low, close, volume, amount }
+    let rows: any[][] = decoded.map((item: any) => {
+      const dateStr = item.date instanceof Date
+        ? item.date.toISOString().split('T')[0]
+        : String(item.date);
+      return [
+        dateStr,
+        String(item.open ?? ''),
+        String(item.high ?? ''),
+        String(item.low ?? ''),
+        String(item.close ?? ''),
+        String(item.volume ?? ''),
+        String(item.amount ?? ''),
+      ];
+    });
 
-    const columns = ['日期', '开盘', '最高', '最低', '收盘', '成交量'];
-    let rows = data.map((item: any) => [
-      item.date,
-      parseFloat(item.open),
-      parseFloat(item.high),
-      parseFloat(item.low),
-      parseFloat(item.close),
-      parseInt(item.volume),
-    ]);
-
-    let df = createDataFrame(columns, rows);
-
-    // Convert types
-    df = convertColumn(df, '日期', 'date');
-    for (const col of ['开盘', '最高', '最低', '收盘', '成交量']) {
-      df = convertColumn(df, col, 'number');
+    if (adjust === '') {
+      const columns = ['date', 'open', 'high', 'low', 'close', 'volume', 'amount'];
+      return createDataFrame(columns, rows);
     }
 
-    return df;
+    // For qfq/hfq adjustment, get the factor data
+    if (adjust === 'hfq') {
+      const hfqUrl = `https://finance.sina.com.cn/stock/hkstock/${symbol}/hfq.js`;
+      const hfqText = await httpGetText(hfqUrl, {
+        headers: {
+          Referer: `https://stock.finance.sina.com.cn/hkstock/quotes/${symbol}.html`,
+        },
+      });
+
+      try {
+        // Parse hfq factor data: var xxx = {data: [[date, factor, cash], ...]}
+        const hfqDataMatch = hfqText.split('=');
+        if (hfqDataMatch.length >= 2) {
+          const hfqDataStr = hfqDataMatch[1].split('\n')[0];
+          const hfqData = eval('(' + hfqDataStr + ')');
+          if (hfqData?.data && hfqData.data.length > 1) {
+            const factorRows = hfqData.data;
+            // Apply hfq adjustment: price * factor + cash
+            const factorMap = new Map<string, { factor: number; cash: number }>();
+            for (const fr of factorRows) {
+              const fDate = fr[0] instanceof Date ? fr[0].toISOString().split('T')[0] : String(fr[0]);
+              factorMap.set(fDate, { factor: Number(fr[1]), cash: Number(fr[2] || 0) });
+            }
+
+            // Forward-fill the factor
+            let lastFactor = { factor: 1, cash: 0 };
+            rows = rows.map(row => {
+              const dateStr = String(row[0]);
+              if (factorMap.has(dateStr)) {
+                lastFactor = factorMap.get(dateStr)!;
+              }
+              const open = parseFloat(String(row[1])) * lastFactor.factor + lastFactor.cash;
+              const high = parseFloat(String(row[2])) * lastFactor.factor + lastFactor.cash;
+              const low = parseFloat(String(row[3])) * lastFactor.factor + lastFactor.cash;
+              const close = parseFloat(String(row[4])) * lastFactor.factor + lastFactor.cash;
+              return [
+                dateStr,
+                String(Math.round(open * 10000) / 10000),
+                String(Math.round(high * 10000) / 10000),
+                String(Math.round(low * 10000) / 10000),
+                String(Math.round(close * 10000) / 10000),
+                String(row[5]),
+                String(row[6]),
+              ];
+            });
+          }
+        }
+      } catch {
+        // If hfq factor fails, return unadjusted
+      }
+    }
+
+    if (adjust === 'qfq') {
+      const qfqUrl = `https://finance.sina.com.cn/stock/hkstock/${symbol}/qfq.js`;
+      const qfqText = await httpGetText(qfqUrl, {
+        headers: {
+          Referer: `https://stock.finance.sina.com.cn/hkstock/quotes/${symbol}.html`,
+        },
+      });
+
+      try {
+        const qfqDataMatch = qfqText.split('=');
+        if (qfqDataMatch.length >= 2) {
+          const qfqDataStr = qfqDataMatch[1].split('\n')[0];
+          const qfqData = eval('(' + qfqDataStr + ')');
+          if (qfqData?.data && qfqData.data.length > 1) {
+            const factorRows = qfqData.data;
+            const factorMap = new Map<string, number>();
+            for (const fr of factorRows) {
+              const fDate = fr[0] instanceof Date ? fr[0].toISOString().split('T')[0] : String(fr[0]);
+              factorMap.set(fDate, Number(fr[1]));
+            }
+
+            let lastFactor = 1;
+            rows = rows.map(row => {
+              const dateStr = String(row[0]);
+              if (factorMap.has(dateStr)) {
+                lastFactor = factorMap.get(dateStr)!;
+              }
+              const open = parseFloat(String(row[1])) * lastFactor;
+              const high = parseFloat(String(row[2])) * lastFactor;
+              const low = parseFloat(String(row[3])) * lastFactor;
+              const close = parseFloat(String(row[4])) * lastFactor;
+              return [
+                dateStr,
+                String(Math.round(open * 10000) / 10000),
+                String(Math.round(high * 10000) / 10000),
+                String(Math.round(low * 10000) / 10000),
+                String(Math.round(close * 10000) / 10000),
+                String(row[5]),
+                String(row[6]),
+              ];
+            });
+          }
+        }
+      } catch {
+        // If qfq factor fails, return unadjusted
+      }
+    }
+
+    const columns = ['date', 'open', 'high', 'low', 'close', 'volume', 'amount'];
+    return createDataFrame(columns, rows);
   } catch (error) {
     return createDataFrame([], []);
   }

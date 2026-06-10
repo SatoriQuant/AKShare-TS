@@ -3,7 +3,7 @@
  * 包括：生猪指数、义乌小商品指数、Drewry集装箱指数、柯桥纺织指数、排污权指数、公路物流指数
  */
 
-import { httpGet } from '../utils/httpClient';
+import { httpGet, httpGetText } from '../utils/httpClient';
 import {
   createDataFrame,
   DataFrame,
@@ -112,53 +112,82 @@ export async function index_yw(
 export async function drewry_wci_index(
   symbol: string = 'composite'
 ): Promise<DataFrame> {
-  // Note: This function parses an Infogram page which requires HTML parsing.
-  // The data is embedded in a JavaScript variable within the page.
-  // This implementation requires server-side HTML parsing capabilities.
-  console.warn('drewry_wci_index: Requires HTML/Infogram parsing - returning placeholder');
-
   const url = 'https://infogram.com/world-container-index-1h17493095xl4zj';
+  const symbolMap: Record<string, number> = {
+    composite: 0,
+    'shanghai-rotterdam': 1,
+    'rotterdam-shanghai': 2,
+    'shanghai-los angeles': 3,
+    'los angeles-shanghai': 4,
+    'shanghai-genoa': 5,
+    'new york-rotterdam': 6,
+    'rotterdam-new york': 7,
+  };
+
+  const parseDate = (text: string): string => {
+    const raw = String(text || '').trim();
+    const parts = raw.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{2})$/);
+    if (!parts) {
+      return raw;
+    }
+    const monthMap: Record<string, string> = {
+      Jan: '01',
+      Feb: '02',
+      Mar: '03',
+      Apr: '04',
+      May: '05',
+      Jun: '06',
+      Jul: '07',
+      Aug: '08',
+      Sep: '09',
+      Oct: '10',
+      Nov: '11',
+      Dec: '12',
+    };
+    const day = parts[1].padStart(2, '0');
+    const month = monthMap[parts[2]] || '01';
+    const year = `20${parts[3]}`;
+    return `${year}-${month}-${day}`;
+  };
 
   try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      return createDataFrame([], []);
-    }
-    const text = await response.text();
-
-    // Try to extract the infographic data from the page
-    const match = text.match(/window\.infographicData=(.+?);<\/script>/s);
+    const text = await httpGetText(url);
+    const match = text.match(/window\.infographicData\s*=\s*([\s\S]*?);<\/script>/i);
     if (!match) {
       return createDataFrame([], []);
     }
 
-    const symbolMap: Record<string, number> = {
-      composite: 0,
-      'shanghai-rotterdam': 1,
-      'rotterdam-shanghai': 2,
-      'shanghai-los angeles': 3,
-      'los angeles-shanghai': 4,
-      'shanghai-genoa': 5,
-      'new york-rotterdam': 6,
-      'rotterdam-new york': 7,
-    };
+    let data: any;
+    try {
+      data = JSON.parse(match[1]);
+    } catch {
+      const fn = new Function(`return (${match[1]});`);
+      data = fn();
+    }
 
-    const data = JSON.parse(match[1]);
-    const entityKey = Object.keys(data.elements?.content?.content?.entities || {})[0];
+    const entities = data?.elements?.content?.content?.entities || {};
+    const entityKey =
+      entities['7a55585f-3fb3-44e6-9b54-beea1cd20b4d']
+        ? '7a55585f-3fb3-44e6-9b54-beea1cd20b4d'
+        : Object.keys(entities)[0];
     if (!entityKey) {
       return createDataFrame([], []);
     }
 
-    const chartData = data.elements.content.content.entities[entityKey].data[symbolMap[symbol]];
+    const chartData = entities[entityKey]?.data?.[symbolMap[symbol]];
     if (!chartData) {
       return createDataFrame([], []);
     }
 
     const columns = ['date', 'wci'];
-    const rows = chartData.slice(1).map((item: any[]) => [
-      item[0]?.value ?? '',
-      parseFloat(item[1]?.value ?? 'NaN'),
-    ]);
+    const rows = chartData
+      .slice(1)
+      .map((item: any[]) => {
+        const date = parseDate(String(item?.[0]?.value ?? ''));
+        const value = Number(item?.[1]?.value);
+        return [date, Number.isNaN(value) ? null : value];
+      })
+      .filter((item: any[]) => item[0]);
 
     return createDataFrame(columns, rows);
   } catch {

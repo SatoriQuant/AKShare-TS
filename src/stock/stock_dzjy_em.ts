@@ -14,39 +14,51 @@ import {
  */
 export async function stock_dzjy_sctj(): Promise<DataFrame> {
   const url = 'https://datacenter-web.eastmoney.com/api/data/v1/get';
-  const params = {
-    sortColumns: 'TRADE_DATE',
-    sortTypes: '-1',
-    pageSize: '500',
-    pageNumber: '1',
-    reportName: 'PRT_BLOCKTRADE_MARKET_STA',
-    columns: 'TRADE_DATE,SZ_INDEX,SZ_CHANGE_RATE,BLOCKTRADE_DEAL_AMT,PREMIUM_DEAL_AMT,PREMIUM_RATIO,DISCOUNT_DEAL_AMT,DISCOUNT_RATIO',
-    source: 'WEB',
-    client: 'WEB',
-  };
-
-  const data = await httpGet<any>(url, { params });
-  if (!data?.result?.data) {
-    return createDataFrame([], []);
-  }
-
   const columns = [
-    '交易日期', '上证指数', '上证指数涨跌幅', '大宗交易成交总额',
+    '序号', '交易日期', '上证指数', '上证指数涨跌幅', '大宗交易成交总额',
     '溢价成交总额', '溢价成交总额占比', '折价成交总额', '折价成交总额占比',
   ];
 
-  const rows = data.result.data.map((item: any) => [
-    item.TRADE_DATE,
-    item.SZ_INDEX,
-    item.SZ_CHANGE_RATE,
-    item.BLOCKTRADE_DEAL_AMT,
-    item.PREMIUM_DEAL_AMT,
-    item.PREMIUM_RATIO,
-    item.DISCOUNT_DEAL_AMT,
-    item.DISCOUNT_RATIO,
-  ]);
+  const allRows: any[][] = [];
+  let pageNumber = 1;
 
-  return createDataFrame(columns, rows);
+  while (true) {
+    const params = {
+      sortColumns: 'TRADE_DATE',
+      sortTypes: '-1',
+      pageSize: '500',
+      pageNumber: String(pageNumber),
+      reportName: 'PRT_BLOCKTRADE_MARKET_STA',
+      columns: 'TRADE_DATE,SZ_INDEX,SZ_CHANGE_RATE,BLOCKTRADE_DEAL_AMT,PREMIUM_DEAL_AMT,PREMIUM_RATIO,DISCOUNT_DEAL_AMT,DISCOUNT_RATIO',
+      source: 'WEB',
+      client: 'WEB',
+    };
+
+    const data = await httpGet<any>(url, { params });
+    if (!data?.result?.data || data.result.data.length === 0) {
+      break;
+    }
+
+    const pageRows = data.result.data.map((item: any) => [
+      String(allRows.length + 1),
+      item.TRADE_DATE ? item.TRADE_DATE.substring(0, 10) : item.TRADE_DATE,
+      String(item.SZ_INDEX ?? ''),
+      String(item.SZ_CHANGE_RATE ?? ''),
+      String(item.BLOCKTRADE_DEAL_AMT ?? ''),
+      String(item.PREMIUM_DEAL_AMT ?? ''),
+      String(item.PREMIUM_RATIO ?? ''),
+      String(item.DISCOUNT_DEAL_AMT ?? ''),
+      String(item.DISCOUNT_RATIO ?? ''),
+    ]);
+    allRows.push(...pageRows);
+
+    if (data.result.data.length < 500) {
+      break;
+    }
+    pageNumber++;
+  }
+
+  return createDataFrame(columns, allRows);
 }
 
 /**
@@ -57,7 +69,7 @@ export async function stock_dzjy_sctj(): Promise<DataFrame> {
  * @param endDate 结束日期，格式 "20220104"
  */
 export async function stock_dzjy_mrmx(
-  symbol: 'A股' | 'B股' | '基金' | '债券' = 'A股',
+  symbol: 'A股' | 'B股' | '基金' | '债券' = '基金',
   startDate: string = '20220104',
   endDate: string = '20220104'
 ): Promise<DataFrame> {
@@ -88,21 +100,22 @@ export async function stock_dzjy_mrmx(
 
   if (symbol === 'A股') {
     const columns = [
-      '交易日期', '证券代码', '证券简称', '涨跌幅', '收盘价', '成交价',
+      '序号', '交易日期', '证券代码', '证券简称', '涨跌幅', '收盘价', '成交价',
       '折溢率', '成交量', '成交额', '成交额/流通市值', '买方营业部', '卖方营业部',
     ];
 
-    const rows = data.result.data.map((item: any) => [
-      item.TRADE_DATE,
+    const rows = data.result.data.map((item: any, index: number) => [
+      String(index + 1),
+      item.TRADE_DATE ? item.TRADE_DATE.substring(0, 10) : item.TRADE_DATE,
       item.SECURITY_CODE,
       item.SECURITY_NAME_ABBR,
-      item.CHANGE_RATE,
-      item.CLOSE_PRICE,
-      item.DEAL_PRICE,
-      item.PREMIUM_RATIO,
-      item.DEAL_VOLUME,
-      item.DEAL_AMT,
-      item.TURNOVER_RATE,
+      String(item.CHANGE_RATE ?? ''),
+      String(item.CLOSE_PRICE ?? ''),
+      String(item.DEAL_PRICE ?? ''),
+      String(item.PREMIUM_RATIO ?? ''),
+      String(item.DEAL_VOLUME ?? ''),
+      String(item.DEAL_AMT ?? ''),
+      String(item.TURNOVER_RATE ?? ''),
       item.BUYER_NAME,
       item.SELLER_NAME,
     ]);
@@ -110,17 +123,18 @@ export async function stock_dzjy_mrmx(
     return createDataFrame(columns, rows);
   } else {
     const columns = [
-      '交易日期', '证券代码', '证券简称', '成交价', '成交量', '成交额',
+      '序号', '交易日期', '证券代码', '证券简称', '成交价', '成交量', '成交额',
       '买方营业部', '卖方营业部',
     ];
 
-    const rows = data.result.data.map((item: any) => [
-      item.TRADE_DATE,
+    const rows = data.result.data.map((item: any, index: number) => [
+      String(index + 1),
+      item.TRADE_DATE ? item.TRADE_DATE.substring(0, 10) : item.TRADE_DATE,
       item.SECURITY_CODE,
       item.SECURITY_NAME_ABBR,
-      item.DEAL_PRICE,
-      item.DEAL_VOLUME,
-      item.DEAL_AMT,
+      String(item.DEAL_PRICE ?? ''),
+      String(item.DEAL_VOLUME ?? ''),
+      String(item.DEAL_AMT ?? ''),
       item.BUYER_NAME,
       item.SELLER_NAME,
     ]);
@@ -161,22 +175,23 @@ export async function stock_dzjy_mrtj(
   }
 
   const columns = [
-    '交易日期', '证券代码', '证券简称', '涨跌幅', '收盘价', '成交价',
+    '序号', '交易日期', '证券代码', '证券简称', '涨跌幅', '收盘价', '成交价',
     '折溢率', '成交笔数', '成交总量', '成交总额', '成交总额/流通市值',
   ];
 
-  const rows = data.result.data.map((item: any) => [
-    item.TRADE_DATE,
+  const rows = data.result.data.map((item: any, index: number) => [
+    String(index + 1),
+    item.TRADE_DATE ? item.TRADE_DATE.substring(0, 10) : item.TRADE_DATE,
     item.SECURITY_CODE,
     item.SECURITY_NAME_ABBR,
-    item.CHANGE_RATE,
-    item.CLOSE_PRICE,
-    item.AVERAGE_PRICE,
-    item.PREMIUM_RATIO,
-    item.DEAL_NUM,
-    item.VOLUME,
-    item.DEAL_AMT,
-    item.TURNOVERRATE,
+    String(item.CHANGE_RATE ?? ''),
+    String(item.CLOSE_PRICE ?? ''),
+    String(item.AVERAGE_PRICE ?? ''),
+    String(item.PREMIUM_RATIO ?? ''),
+    String(item.DEAL_NUM ?? ''),
+    String(item.VOLUME ?? ''),
+    String(item.DEAL_AMT ?? ''),
+    String(item.TURNOVERRATE ?? ''),
   ]);
 
   return createDataFrame(columns, rows);
@@ -207,38 +222,55 @@ export async function stock_dzjy_hygtj(
     filter: `(DATE_TYPE_CODE=${periodMap[symbol]})`,
   };
 
-  const data = await httpGet<any>(url, { params });
-  if (!data?.result?.data) {
-    return createDataFrame([], []);
+  const allRows: any[][] = [];
+  let pageNumber = 1;
+
+  while (true) {
+    const pageParams = {
+      ...params,
+      pageNumber: String(pageNumber),
+    };
+
+    const data = await httpGet<any>(url, { params: pageParams });
+    if (!data?.result?.data || data.result.data.length === 0) {
+      break;
+    }
+
+    const pageRows = data.result.data.map((item: any) => [
+      String(allRows.length + 1),
+      item.SECURITY_CODE,
+      item.SECURITY_NAME_ABBR,
+      String(item.CLOSE_PRICE ?? ''),
+      String(item.CHANGE_RATE ?? ''),
+      item.TRADE_DATE ? item.TRADE_DATE.substring(0, 10) : item.TRADE_DATE,
+      String(item.DEAL_NUM ?? ''),
+      String(item.PREMIUM_TIMES ?? ''),
+      String(item.DISCOUNT_TIMES ?? ''),
+      String(item.DEAL_AMT ?? ''),
+      String(item.PREMIUM_RATIO ?? ''),
+      String(item.SUM_TURNOVERRATE ?? ''),
+      String(item.D1_AVG_ADJCHRATE ?? ''),
+      String(item.D5_AVG_ADJCHRATE ?? ''),
+      String(item.D10_AVG_ADJCHRATE ?? ''),
+      String(item.D20_AVG_ADJCHRATE ?? ''),
+    ]);
+    allRows.push(...pageRows);
+
+    if (data.result.data.length < 5000) {
+      break;
+    }
+    pageNumber++;
   }
 
   const columns = [
-    '证券代码', '证券简称', '最新价', '涨跌幅', '最近上榜日',
+    '序号', '证券代码', '证券简称', '最新价', '涨跌幅', '最近上榜日',
     '上榜次数-总计', '上榜次数-溢价', '上榜次数-折价',
     '总成交额', '折溢率', '成交总额/流通市值',
     '上榜日后平均涨跌幅-1日', '上榜日后平均涨跌幅-5日',
     '上榜日后平均涨跌幅-10日', '上榜日后平均涨跌幅-20日',
   ];
 
-  const rows = data.result.data.map((item: any) => [
-    item.SECURITY_CODE,
-    item.SECURITY_NAME_ABBR,
-    item.CLOSE_PRICE,
-    item.CHANGE_RATE,
-    item.TRADE_DATE,
-    item.DEAL_NUM,
-    item.PREMIUM_TIMES,
-    item.DISCOUNT_TIMES,
-    item.DEAL_AMT,
-    item.PREMIUM_RATIO,
-    item.SUM_TURNOVERRATE,
-    item.D1_AVG_ADJCHRATE,
-    item.D5_AVG_ADJCHRATE,
-    item.D10_AVG_ADJCHRATE,
-    item.D20_AVG_ADJCHRATE,
-  ]);
-
-  return createDataFrame(columns, rows);
+  return createDataFrame(columns, allRows);
 }
 
 /**
@@ -249,12 +281,12 @@ export async function stock_dzjy_hygtj(
 export async function stock_dzjy_hyyybtj(
   symbol: '当前交易日' | '近3日' | '近5日' | '近10日' | '近30日' = '近3日'
 ): Promise<DataFrame> {
-  const periodMap: Record<string, string> = {
-    '当前交易日': '1', '近3日': '3', '近5日': '5', '近10日': '10', '近30日': '30',
+  const periodMap: Record<string, number> = {
+    '当前交易日': -1, '近3日': -3, '近5日': -5, '近10日': -10, '近30日': -30,
   };
 
   const url = 'https://datacenter-web.eastmoney.com/api/data/v1/get';
-  const params = {
+  const baseParams = {
     sortColumns: 'BUYER_NUM,TOTAL_BUYAMT',
     sortTypes: '-1,-1',
     pageSize: '5000',
@@ -263,31 +295,48 @@ export async function stock_dzjy_hyyybtj(
     columns: 'OPERATEDEPT_CODE,OPERATEDEPT_NAME,ONLIST_DATE,STOCK_DETAILS,BUYER_NUM,SELLER_NUM,TOTAL_BUYAMT,TOTAL_SELLAMT,TOTAL_NETAMT,N_DATE',
     source: 'WEB',
     client: 'WEB',
-    filter: `(N_DATE=-${periodMap[symbol]})`,
+    filter: `(N_DATE=${periodMap[symbol]})`,
   };
 
-  const data = await httpGet<any>(url, { params });
-  if (!data?.result?.data) {
-    return createDataFrame([], []);
-  }
-
   const columns = [
-    '营业部名称', '最近上榜日', '次数总计-买入', '次数总计-卖出',
+    '序号', '最近上榜日', '营业部名称', '次数总计-买入', '次数总计-卖出',
     '成交金额统计-买入', '成交金额统计-卖出', '成交金额统计-净买入额', '买入的股票',
   ];
 
-  const rows = data.result.data.map((item: any) => [
-    item.OPERATEDEPT_NAME,
-    item.ONLIST_DATE,
-    item.BUYER_NUM,
-    item.SELLER_NUM,
-    item.TOTAL_BUYAMT,
-    item.TOTAL_SELLAMT,
-    item.TOTAL_NETAMT,
-    item.STOCK_DETAILS,
-  ]);
+  const allRows: any[][] = [];
+  let pageNumber = 1;
 
-  return createDataFrame(columns, rows);
+  while (true) {
+    const params = {
+      ...baseParams,
+      pageNumber: String(pageNumber),
+    };
+
+    const data = await httpGet<any>(url, { params });
+    if (!data?.result?.data || data.result.data.length === 0) {
+      break;
+    }
+
+    const pageRows = data.result.data.map((item: any) => [
+      String(allRows.length + 1),
+      item.ONLIST_DATE ? item.ONLIST_DATE.substring(0, 10) : item.ONLIST_DATE,
+      item.OPERATEDEPT_NAME,
+      String(item.BUYER_NUM ?? ''),
+      String(item.SELLER_NUM ?? ''),
+      String(item.TOTAL_BUYAMT ?? ''),
+      String(item.TOTAL_SELLAMT ?? ''),
+      String(item.TOTAL_NETAMT ?? ''),
+      item.STOCK_DETAILS,
+    ]);
+    allRows.push(...pageRows);
+
+    if (data.result.data.length < 5000) {
+      break;
+    }
+    pageNumber++;
+  }
+
+  return createDataFrame(columns, allRows);
 }
 
 /**
@@ -298,12 +347,12 @@ export async function stock_dzjy_hyyybtj(
 export async function stock_dzjy_yybph(
   symbol: '近一月' | '近三月' | '近六月' | '近一年' = '近三月'
 ): Promise<DataFrame> {
-  const periodMap: Record<string, string> = {
-    '近一月': '30', '近三月': '90', '近六月': '180', '近一年': '360',
+  const periodMap: Record<string, number> = {
+    '近一月': -30, '近三月': -90, '近六月': -180, '近一年': -360,
   };
 
   const url = 'https://datacenter-web.eastmoney.com/api/data/v1/get';
-  const params = {
+  const baseParams = {
     sortColumns: 'D5_BUYER_NUM,D1_AVERAGE_INCREASE',
     sortTypes: '-1,-1',
     pageSize: '5000',
@@ -312,29 +361,46 @@ export async function stock_dzjy_yybph(
     columns: 'OPERATEDEPT_CODE,OPERATEDEPT_NAME,D1_BUYER_NUM,D1_AVERAGE_INCREASE,D1_RISE_PROBABILITY,D5_BUYER_NUM,D5_AVERAGE_INCREASE,D5_RISE_PROBABILITY,D10_BUYER_NUM,D10_AVERAGE_INCREASE,D10_RISE_PROBABILITY,D20_BUYER_NUM,D20_AVERAGE_INCREASE,D20_RISE_PROBABILITY,N_DATE,RELATED_ORG_CODE',
     source: 'WEB',
     client: 'WEB',
-    filter: `(N_DATE=-${periodMap[symbol]})`,
+    filter: `(N_DATE=${periodMap[symbol]})`,
   };
 
-  const data = await httpGet<any>(url, { params });
-  if (!data?.result?.data) {
-    return createDataFrame([], []);
-  }
-
   const columns = [
-    '营业部名称',
+    '序号', '营业部名称',
     '上榜后1天-买入次数', '上榜后1天-平均涨幅', '上榜后1天-上涨概率',
     '上榜后5天-买入次数', '上榜后5天-平均涨幅', '上榜后5天-上涨概率',
     '上榜后10天-买入次数', '上榜后10天-平均涨幅', '上榜后10天-上涨概率',
     '上榜后20天-买入次数', '上榜后20天-平均涨幅', '上榜后20天-上涨概率',
   ];
 
-  const rows = data.result.data.map((item: any) => [
-    item.OPERATEDEPT_NAME,
-    item.D1_BUYER_NUM, item.D1_AVERAGE_INCREASE, item.D1_RISE_PROBABILITY,
-    item.D5_BUYER_NUM, item.D5_AVERAGE_INCREASE, item.D5_RISE_PROBABILITY,
-    item.D10_BUYER_NUM, item.D10_AVERAGE_INCREASE, item.D10_RISE_PROBABILITY,
-    item.D20_BUYER_NUM, item.D20_AVERAGE_INCREASE, item.D20_RISE_PROBABILITY,
-  ]);
+  const allRows: any[][] = [];
+  let pageNumber = 1;
 
-  return createDataFrame(columns, rows);
+  while (true) {
+    const params = {
+      ...baseParams,
+      pageNumber: String(pageNumber),
+    };
+
+    const data = await httpGet<any>(url, { params });
+    if (!data?.result?.data || data.result.data.length === 0) {
+      break;
+    }
+
+    const pageRows = data.result.data.map((item: any) => [
+      String(allRows.length + 1),
+      item.OPERATEDEPT_NAME,
+      String(item.D1_BUYER_NUM ?? ''), String(item.D1_AVERAGE_INCREASE ?? ''), String(item.D1_RISE_PROBABILITY ?? ''),
+      String(item.D5_BUYER_NUM ?? ''), String(item.D5_AVERAGE_INCREASE ?? ''), String(item.D5_RISE_PROBABILITY ?? ''),
+      String(item.D10_BUYER_NUM ?? ''), String(item.D10_AVERAGE_INCREASE ?? ''), String(item.D10_RISE_PROBABILITY ?? ''),
+      String(item.D20_BUYER_NUM ?? ''), String(item.D20_AVERAGE_INCREASE ?? ''), String(item.D20_RISE_PROBABILITY ?? ''),
+    ]);
+    allRows.push(...pageRows);
+
+    if (data.result.data.length < 5000) {
+      break;
+    }
+    pageNumber++;
+  }
+
+  return createDataFrame(columns, allRows);
 }

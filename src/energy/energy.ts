@@ -9,56 +9,6 @@ import {
 } from '../utils/dataframe';
 
 /**
- * 获取能源实时行情 - 东方财富
- */
-export async function energy_spot_em(): Promise<DataFrame> {
-  const url = 'https://79.push2.eastmoney.com/api/qt/clist/get';
-  const params = {
-    pn: '1',
-    pz: '100',
-    po: '1',
-    np: '1',
-    ut: 'bd1d9ddb04089700cf9c27f6f7426281',
-    fltt: '2',
-    invt: '2',
-    fid: 'f3',
-    fs: 'm:113,m:114,m:115',
-    fields: 'f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f12,f13,f14,f15,f16,f17,f18,f20,f21,f23,f24,f25,f22,f11,f62,f128,f136,f115,f152',
-    _: Date.now(),
-  };
-
-  const data = await httpGet<any>(url, { params });
-
-  if (!data?.data?.diff) {
-    return createDataFrame([], []);
-  }
-
-  const columns = [
-    '品种代码', '品种名称', '最新价', '涨跌幅', '涨跌额', '成交量', '成交额',
-    '持仓量', '振幅', '开盘', '最高', '最低', '昨收', '结算'
-  ];
-
-  const rows = data.data.diff.map((item: any) => [
-    item.f12,  // 品种代码
-    item.f14,  // 品种名称
-    item.f2,   // 最新价
-    item.f3,   // 涨跌幅
-    item.f4,   // 涨跌额
-    item.f5,   // 成交量
-    item.f6,   // 成交额
-    item.f8,   // 持仓量
-    item.f7,   // 振幅
-    item.f17,  // 开盘
-    item.f15,  // 最高
-    item.f16,  // 最低
-    item.f18,  // 昨收
-    item.f21,  // 结算
-  ]);
-
-  return createDataFrame(columns, rows);
-}
-
-/**
  * 获取原油历史行情 - 东方财富
  *
  * @param symbol 品种代码，如 "CL" (WTI原油), "BRENT" (布伦特原油)
@@ -72,47 +22,42 @@ export async function energy_oil_hist(
   startDate?: string,
   endDate?: string
 ): Promise<DataFrame> {
-  const periodMap: Record<string, string> = {
-    daily: '101',
-    weekly: '102',
-    monthly: '103',
-  };
-
-  const url = 'https://push2his.eastmoney.com/api/qt/stock/kline/get';
+  const url = 'https://datacenter-web.eastmoney.com/api/data/v1/get';
   const params = {
-    fields1: 'f1,f2,f3,f4,f5,f6',
-    fields2: 'f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61',
-    klt: periodMap[period],
-    fqt: '1',
-    secid: `101.${symbol}`,
-    beg: startDate || '19700101',
-    end: endDate || '20500101',
-    lmt: '1000000',
+    reportName: 'RPTA_WEB_YJ_BD',
+    columns: 'ALL',
+    sortColumns: 'dim_date',
+    sortTypes: '-1',
+    token: '894050c76af8597a853f5b408b759f5d',
+    pageNumber: '1',
+    pageSize: '1000',
+    source: 'WEB',
+    p: '1',
+    pageNo: '1',
+    pageNum: '1',
     _: Date.now(),
   };
 
   const data = await httpGet<any>(url, { params });
 
-  if (!data?.data?.klines) {
+  if (!data?.result?.data) {
     return createDataFrame([], []);
   }
 
-  const columns = ['日期', '开盘', '收盘', '最高', '最低', '成交量', '振幅', '涨跌幅', '涨跌额'];
+  const columns = ['调整日期', '汽油价格', '柴油价格', '汽油涨跌', '柴油涨跌'];
 
-  const rows = data.data.klines.map((item: string) => {
-    const parts = item.split(',');
-    return [
-      parts[0],
-      parseFloat(parts[1]),
-      parseFloat(parts[2]),
-      parseFloat(parts[3]),
-      parseFloat(parts[4]),
-      parseInt(parts[5]),
-      parseFloat(parts[7]),
-      parseFloat(parts[8]),
-      parseFloat(parts[9]),
-    ];
-  });
+  const toNum = (v: any): number | null => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const rows = data.result.data.map((item: any) => [
+    item.dim_date || item.DIM_DATE || item.调整日期 || '',
+    toNum(item.V_92 || item.汽油价格),
+    toNum(item.V_0 || item.柴油价格),
+    toNum(item.ZDE_92 || item.汽油涨跌),
+    toNum(item.ZDE_0 || item.柴油涨跌),
+  ]);
 
   return createDataFrame(columns, rows);
 }
@@ -126,42 +71,6 @@ export async function energy_gas_hist(
   endDate?: string
 ): Promise<DataFrame> {
   return energy_oil_hist('NG', period, startDate, endDate);
-}
-
-/**
- * 获取煤炭价格数据 - 东方财富
- */
-export async function energy_coal_spot(): Promise<DataFrame> {
-  const url = 'https://datacenter-web.eastmoney.com/api/data/v1/get';
-  const params = {
-    reportName: 'RPT_ENERGY_COAL',
-    columns: 'ALL',
-    pageNumber: '1',
-    pageSize: '1000',
-    sortTypes: '-1',
-    sortColumns: 'REPORT_DATE',
-    source: 'WEB',
-    client: 'WEB',
-    _: Date.now(),
-  };
-
-  const data = await httpGet<any>(url, { params });
-
-  if (!data?.result?.data) {
-    return createDataFrame([], []);
-  }
-
-  const columns = ['日期', '品种', '价格', '涨跌', '单位'];
-
-  const rows = data.result.data.map((item: any) => [
-    item.REPORT_DATE,
-    item.VARIETY,
-    item.PRICE,
-    item.CHANGE,
-    item.UNIT,
-  ]);
-
-  return createDataFrame(columns, rows);
 }
 
 // ---------------------------------------------------------------------------

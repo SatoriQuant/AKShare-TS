@@ -22,9 +22,8 @@ async function getLofCodeIdMap(): Promise<Record<string, number>> {
   if (lofCodeIdMap) return lofCodeIdMap;
 
   const url = 'https://2.push2.eastmoney.com/api/qt/clist/get';
-  const params = {
-    pn: '1',
-    pz: '10000',
+  const baseParams = {
+    pz: '100',
     po: '1',
     np: '1',
     ut: 'bd1d9ddb04089700cf9c27f6f7426281',
@@ -36,11 +35,15 @@ async function getLofCodeIdMap(): Promise<Record<string, number>> {
     fields: 'f3,f12,f13',
   };
 
-  const data = await httpGet<any>(url, { params });
   const map: Record<string, number> = {};
 
-  if (data?.data?.diff) {
-    for (const item of data.data.diff) {
+  for (let page = 1; page <= 50; page++) {
+    const data = await httpGet<any>(url, { params: { ...baseParams, pn: String(page) } });
+    const diff = data?.data?.diff;
+    if (!Array.isArray(diff) || diff.length === 0) {
+      break;
+    }
+    for (const item of diff) {
       map[item.f12] = item.f13;
     }
   }
@@ -134,13 +137,14 @@ export async function fund_lof_hist_em(
     const url = 'https://push2his.eastmoney.com/api/qt/stock/kline/get';
     const params = {
       fields1: 'f1,f2,f3,f4,f5,f6',
-      fields2: 'f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61',
+      fields2: 'f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f116',
       ut: '7eea3edcaed734bea9cbfc24409ed989',
       klt: periodMap[period],
       fqt: adjustMap[adjust],
       secid: `${secId}.${symbol}`,
       beg: startDate,
       end: endDate,
+      lmt: '1000000',
     };
 
     const data = await httpGet<any>(url, { params });
@@ -154,20 +158,25 @@ export async function fund_lof_hist_em(
       '振幅', '涨跌幅', '涨跌额', '换手率',
     ];
 
+    const toNum = (v: string): number | null => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+
     const rows = data.data.klines.map((item: string) => {
       const parts = item.split(',');
       return [
         parts[0],
-        parseFloat(parts[1]) || null,
-        parseFloat(parts[2]) || null,
-        parseFloat(parts[3]) || null,
-        parseFloat(parts[4]) || null,
-        parseInt(parts[5]) || null,
-        parseFloat(parts[6]) || null,
-        parseFloat(parts[7]) || null,
-        parseFloat(parts[8]) || null,
-        parseFloat(parts[9]) || null,
-        parseFloat(parts[10]) || null,
+        toNum(parts[1]),
+        toNum(parts[2]),
+        toNum(parts[3]),
+        toNum(parts[4]),
+        toNum(parts[5]),
+        toNum(parts[6]),
+        toNum(parts[7]),
+        toNum(parts[8]),
+        toNum(parts[9]),
+        toNum(parts[10]),
       ];
     });
 

@@ -37,8 +37,8 @@ export async function option_risk_indicator_sse(date: string = '20240626'): Prom
     }
 
     const columns = [
-      '交易日期', '合约编码', '合约交易代码', '合约简称',
-      'Delta', 'Theta', 'Gamma', 'Vega', 'Rho', '隐含波动率'
+      'TRADE_DATE', 'SECURITY_ID', 'CONTRACT_ID', 'CONTRACT_SYMBOL',
+      'DELTA_VALUE', 'THETA_VALUE', 'GAMMA_VALUE', 'VEGA_VALUE', 'RHO_VALUE', 'IMPLC_VOLATLTY'
     ];
 
     const rows = data.result.map((item: any) => [

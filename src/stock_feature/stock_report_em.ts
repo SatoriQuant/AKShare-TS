@@ -81,7 +81,7 @@ export async function stock_yjbb_em_report(date: string = '20200331'): Promise<D
  * @returns 业绩快报数据
  */
 export async function stock_yjkb_em(date: string = '20200331'): Promise<DataFrame> {
-  const url = 'https://datacenter-web.eastmoney.com/api/data/v1/get';
+  const url = 'https://datacenter.eastmoney.com/securities/api/data/v1/get';
   const params = {
     sortColumns: 'UPDATE_DATE,SECURITY_CODE',
     sortTypes: '-1,-1',
@@ -89,7 +89,7 @@ export async function stock_yjkb_em(date: string = '20200331'): Promise<DataFram
     pageNumber: '1',
     reportName: 'RPT_FCI_PERFORMANCEE',
     columns: 'ALL',
-    filter: `(REPORT_DATE='${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6)}')`,
+    filter: `(SECURITY_TYPE_CODE in ("058001001","058001008"))(TRADE_MARKET_CODE!="069001017")(REPORT_DATE='${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6)}')`,
   };
 
   const data = await httpGet<any>(url, { params });
@@ -111,22 +111,27 @@ export async function stock_yjkb_em(date: string = '20200331'): Promise<DataFram
   }
 
   const columns = [
-    '序号', '股票代码', '股票简称', '预计营业收入', '预计净利润',
-    '营业收入变化', '净利润变化', '每股收益', '每股净资产', '净资产收益率',
-    '所处行业', '最新公告日期'
+    '序号', '股票代码', '股票简称', '每股收益',
+    '营业收入-营业收入', '营业收入-去年同期', '营业收入-同比增长', '营业收入-季度环比增长',
+    '净利润-净利润', '净利润-去年同期', '净利润-同比增长', '净利润-季度环比增长',
+    '每股净资产', '净资产收益率', '所处行业', '公告日期'
   ];
 
   const rows = allData.map((item: any, index: number) => [
-    index + 1,
+    String(index + 1),
     item.SECURITY_CODE,
     item.SECURITY_NAME_ABBR,
-    item.ESTIMATE_OPERATE_INCOME,
-    item.ESTIMATE_NET_PROFIT,
-    item.OPERATE_INCOME_YOY,
-    item.NET_PROFIT_YOY,
-    item.EPS,
-    item.BPS,
-    item.ROE,
+    item.EPS != null ? String(item.EPS) : null,
+    item.TOTAL_OPERATE_INCOME != null ? String(item.TOTAL_OPERATE_INCOME) : null,
+    item.TOTAL_OPERATE_INCOME_LY != null ? String(item.TOTAL_OPERATE_INCOME_LY) : null,
+    item.OPERATE_INCOME_YOY != null ? String(item.OPERATE_INCOME_YOY) : null,
+    item.OPERATE_INCOME_QOQ != null ? String(item.OPERATE_INCOME_QOQ) : null,
+    item.PARENT_NETPROFIT != null ? String(item.PARENT_NETPROFIT) : null,
+    item.PARENT_NETPROFIT_LY != null ? String(item.PARENT_NETPROFIT_LY) : null,
+    item.NET_PROFIT_YOY != null ? String(item.NET_PROFIT_YOY) : null,
+    item.NET_PROFIT_QOQ != null ? String(item.NET_PROFIT_QOQ) : null,
+    item.BPS != null ? String(item.BPS) : null,
+    item.ROE != null ? String(item.ROE) : null,
     item.INDUSTRY,
     item.NOTICE_DATE ? new Date(item.NOTICE_DATE).toISOString().split('T')[0] : null,
   ]);
@@ -141,9 +146,9 @@ export async function stock_yjkb_em(date: string = '20200331'): Promise<DataFram
  * @returns 业绩预告数据
  */
 export async function stock_yjyg_em(date: string = '20200331'): Promise<DataFrame> {
-  const url = 'https://datacenter-web.eastmoney.com/api/data/v1/get';
+  const url = 'https://datacenter.eastmoney.com/securities/api/data/v1/get';
   const params = {
-    sortColumns: 'UPDATE_DATE,SECURITY_CODE',
+    sortColumns: 'NOTICE_DATE,SECURITY_CODE',
     sortTypes: '-1,-1',
     pageSize: '500',
     pageNumber: '1',
@@ -171,17 +176,20 @@ export async function stock_yjyg_em(date: string = '20200331'): Promise<DataFram
   }
 
   const columns = [
-    '序号', '股票代码', '股票简称', '预告类型', '预告净利润', '预告净利润增长',
-    '预告营业收入', '预告营业收入增长', '所处行业', '最新公告日期'
+    '序号', '股票代码', '股票简称', '预测指标', '业绩变动', '预测数值',
+    '业绩变动幅度', '业绩变动原因', '预告类型', '上年同期值', '公告日期'
   ];
 
   const rows = allData.map((item: any, index: number) => [
-    index + 1,
+    String(index + 1),
     item.SECURITY_CODE,
     item.SECURITY_NAME_ABBR,
-    item.PREDICT_FINANCE_CODE,
     item.PREDICT_FINANCE_EXPLAIN,
+    item.EXPECT_FINANCE_EXPLAIN,
+    item.PREDICT_AMOUNT != null ? String(item.PREDICT_AMOUNT) : null,
     item.CHANGE_REASON_EXPLAIN,
+    item.PREDICT_FINANCE_CODE,
+    item.PREV_REPORT_AMOUNT != null ? String(item.PREV_REPORT_AMOUNT) : null,
     item.NOTICE_DATE ? new Date(item.NOTICE_DATE).toISOString().split('T')[0] : null,
   ]);
 

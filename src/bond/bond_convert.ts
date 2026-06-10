@@ -3,7 +3,7 @@
  * 集思录：https://www.jisilu.cn/data/cbnew/#cb
  */
 
-import { httpGet, httpPost } from '../utils/httpClient';
+import { httpGet, httpGetText, httpPost } from '../utils/httpClient';
 import {
   createDataFrame,
   DataFrame,
@@ -17,116 +17,21 @@ export async function bond_cb_index_jsl(): Promise<DataFrame> {
   const url = 'https://www.jisilu.cn/webapi/cb/index_history/';
 
   try {
-    const data = await httpGet<any>(url);
+    const text = await httpGetText(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        Referer: 'https://www.jisilu.cn/web/data/cb/index',
+      },
+    });
+    const data = JSON.parse(text);
 
-    if (!data?.data) {
+    if (!data?.data || typeof data.data !== 'object') {
       return createDataFrame([], []);
     }
 
-    // 根据实际返回数据结构处理
-    const columns = Object.keys(data.data[0] || {});
-    const rows = data.data.map((item: any) => columns.map(col => item[col]));
-
-    return createDataFrame(columns, rows);
-  } catch (error) {
-    return createDataFrame([], []);
-  }
-}
-
-/**
- * 获取集思录可转债数据
- * https://www.jisilu.cn/data/cbnew/#cb
- *
- * @param cookie 浏览器 cookie（可选，某些数据需要）
- */
-export async function bond_cb_jsl_convert(cookie?: string): Promise<DataFrame> {
-  const url = 'https://www.jisilu.cn/data/cbnew/cb_list_new/';
-  const params = {
-    ___jsl: `LST___t=${Date.now()}`,
-  };
-
-  const payload = {
-    fprice: '',
-    tprice: '',
-    curr_iss_amt: '',
-    volume: '',
-    svolume: '',
-    premium_rt: '',
-    ytm_rt: '',
-    market: '',
-    rating_cd: '',
-    is_search: 'N',
-    'market_cd[]': ['shmb', 'shkc', 'szmb', 'szcy'],
-    btype: '',
-    listed: 'Y',
-    qflag: 'N',
-    sw_cd: '',
-    bond_ids: '',
-    rp: '50',
-  };
-
-  const headers: Record<string, string> = {
-    'Accept': 'application/json, text/javascript, */*; q=0.01',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-    'Cache-Control': 'no-cache',
-    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-    'Origin': 'https://www.jisilu.cn',
-    'Pragma': 'no-cache',
-    'Referer': 'https://www.jisilu.cn/data/cbnew/',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.164 Safari/537.36',
-    'X-Requested-With': 'XMLHttpRequest',
-  };
-
-  if (cookie) {
-    headers['Cookie'] = cookie;
-  }
-
-  try {
-    const data = await httpPost<any>(url, payload, {
-      params,
-      headers,
-    });
-
-    if (!data?.rows) {
-      return createDataFrame([], []);
-    }
-
-    const columns = [
-      '代码', '转债名称', '现价', '涨跌幅', '正股代码', '正股名称',
-      '正股价', '正股涨跌', '正股PB', '转股价', '转股价值', '转股溢价率',
-      '债券评级', '回售触发价', '强赎触发价', '转债占比', '到期时间',
-      '剩余年限', '剩余规模', '成交额', '换手率', '到期税前收益', '双低'
-    ];
-
-    const rows = data.rows.map((item: any) => {
-      const cell = item.cell;
-      return [
-        cell.bond_id,
-        cell.bond_nm,
-        parseFloat(cell.price) || null,
-        parseFloat(cell.increase_rt) || null,
-        cell.stock_id,
-        cell.stock_nm,
-        parseFloat(cell.sprice) || null,
-        parseFloat(cell.sincrease_rt) || null,
-        parseFloat(cell.pb) || null,
-        parseFloat(cell.convert_price) || null,
-        parseFloat(cell.convert_value) || null,
-        parseFloat(cell.premium_rt) || null,
-        cell.rating_cd,
-        parseFloat(cell.put_convert_price) || null,
-        parseFloat(cell.force_redeem_price) || null,
-        parseFloat(cell.convert_amt_ratio) || null,
-        cell.maturity_dt,
-        parseFloat(cell.year_left) || null,
-        parseFloat(cell.curr_iss_amt) || null,
-        parseFloat(cell.volume) || null,
-        parseFloat(cell.turnover_rt) || null,
-        parseFloat(cell.ytm_rt) || null,
-        parseFloat(cell.dblow) || null,
-      ];
-    });
+    const columns = Object.keys(data.data);
+    const rowCount = Array.isArray(data.data[columns[0]]) ? data.data[columns[0]].length : 0;
+    const rows = Array.from({ length: rowCount }, (_, index) => columns.map((col) => data.data[col]?.[index] ?? ''));
 
     return createDataFrame(columns, rows);
   } catch (error) {

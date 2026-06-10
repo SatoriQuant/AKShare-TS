@@ -3,7 +3,7 @@
  * https://data.eastmoney.com/stockcomment/
  */
 
-import { httpGet } from '../utils/httpClient';
+import { httpGet, httpGetText } from '../utils/httpClient';
 import {
   createDataFrame,
   DataFrame,
@@ -220,7 +220,22 @@ export async function stock_comment_detail_scrd_desire_em(
     _: String(timestamp),
   };
 
-  const data = await httpGet<any>(url, { params });
+  // Fetch as text since response is JSONP wrapped
+  const jsonpText = await httpGetText(url, {
+    params,
+    headers: {
+      'Referer': 'https://data.eastmoney.com/',
+      'Accept': '*/*',
+    },
+  });
+
+  // Extract JSON from JSONP wrapper: jQuery...({...})
+  const jsonMatch = jsonpText.match(/\((.*)\)/s);
+  if (!jsonMatch) {
+    return createDataFrame([], []);
+  }
+
+  const data = JSON.parse(jsonMatch[1]);
 
   if (!data?.result?.data) {
     return createDataFrame([], []);
@@ -228,16 +243,16 @@ export async function stock_comment_detail_scrd_desire_em(
 
   const columns = [
     '交易日期', '股票代码', '参与意愿',
-    '5日平均参与意愿', '参与意愿变化', '5日平均变化'
+    '5日平均参与意愿', '参与意愿变化', '5日平均变化',
   ];
 
   const rows = data.result.data.map((item: any) => [
     item.TRADE_DATE ? new Date(item.TRADE_DATE).toISOString().split('T')[0] : null,
-    item.SECURITY_CODE,
-    item.PARTICIPATION_WISH,
-    item.PARTICIPATION_WISH_5DAYS,
-    item.PARTICIPATION_WISH_CHANGE,
-    item.PARTICIPATION_WISH_5DAYSCHANGE,
+    String(item.SECURITY_CODE ?? ''),
+    String(item.PARTICIPATION_WISH ?? ''),
+    String(item.PARTICIPATION_WISH_5DAYS ?? ''),
+    String(item.PARTICIPATION_WISH_CHANGE ?? ''),
+    String(item.PARTICIPATION_WISH_5DAYSCHANGE ?? ''),
   ]);
 
   // 按日期排序

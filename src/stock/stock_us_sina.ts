@@ -7,8 +7,8 @@ import { httpGetText, httpGet } from '../utils/httpClient';
 import {
   createDataFrame,
   DataFrame,
-  convertColumn,
 } from '../utils/dataframe';
+import { decodeSinaData } from '../utils/jsDecode';
 
 /**
  * 新浪财经-美股-股票列表
@@ -125,74 +125,104 @@ export async function stock_us_spot(
  * 新浪财经-美股历史行情数据
  * https://finance.sina.com.cn/stock/usstock/sector.shtml
  *
+ * Uses Sina's staticdata endpoint with JS decoding (same as Python AKShare).
+ *
  * @param symbol 股票代码，如 "AAPL"
- * @param startDate 开始日期，格式 "20240101"
- * @param endDate 结束日期，格式 "20241231"
  * @param adjust 复权类型：qfq 前复权, "" 不复权
  */
 export async function stock_us_daily(
   symbol: string = 'AAPL',
-  startDate?: string,
-  endDate?: string,
   adjust: 'qfq' | '' = ''
 ): Promise<DataFrame> {
-  const url = `https://quotes.sina.cn/usstock/api/jsonp.php/callback/US_MinKService.getDailyK`;
-  const params = {
-    symbol: symbol,
-    scale: '240',
-    datalen: '10000',
-  };
-
   try {
-    const text = await httpGetText(url, { params });
+    // Step 1: Get unadjusted data from Sina's staticdata endpoint
+    const url = `https://finance.sina.com.cn/staticdata/us/${symbol}`;
+    const text = await httpGetText(url);
 
-    // Parse JSONP response
-    const match = text.match(/\((\[.*\])\)/s);
-    if (!match) {
+    // Extract encoded string: var xx = "encoded_data";
+    const encodedMatch = text.split('=');
+    if (encodedMatch.length < 2) {
+      return createDataFrame([], []);
+    }
+    const encodedStr = encodedMatch[1].split(';')[0].replace(/"/g, '');
+
+    // Decode using the same JS decoder
+    const decoded = decodeSinaData(encodedStr);
+    if (!decoded || decoded.length === 0) {
       return createDataFrame([], []);
     }
 
-    const data = JSON.parse(match[1]);
+    // Build base data - decoded items have: { date, open, high, low, close, volume }
+    // Note: Sina US data doesn't have "amount" field, we'll use volume
+    let rows: any[][] = decoded.map((item: any) => {
+      const dateStr = item.date instanceof Date
+        ? item.date.toISOString().split('T')[0]
+        : String(item.date);
+      return [
+        dateStr,
+        String(item.open ?? ''),
+        String(item.high ?? ''),
+        String(item.low ?? ''),
+        String(item.close ?? ''),
+        String(item.volume ?? ''),
+      ];
+    });
 
-    const columns = ['日期', '开盘', '最高', '最低', '收盘', '成交量'];
-    let rows = data.map((item: any) => [
-      item.date,
-      parseFloat(item.open),
-      parseFloat(item.high),
-      parseFloat(item.low),
-      parseFloat(item.close),
-      parseInt(item.volume),
-    ]);
-
-    let df = createDataFrame(columns, rows);
-
-    // Convert types
-    df = convertColumn(df, '日期', 'date');
-    for (const col of ['开盘', '最高', '最低', '收盘', '成交量']) {
-      df = convertColumn(df, col, 'number');
+    if (adjust === '') {
+      const columns = ['date', 'open', 'high', 'low', 'close', 'volume'];
+      return createDataFrame(columns, rows);
     }
 
-    // Filter by date range
-    if (startDate || endDate) {
-      const start = startDate ? new Date(
-        `${startDate.slice(0, 4)}-${startDate.slice(4, 6)}-${startDate.slice(6, 8)}`
-      ) : null;
-      const end = endDate ? new Date(
-        `${endDate.slice(0, 4)}-${endDate.slice(4, 6)}-${endDate.slice(6, 8)}`
-      ) : null;
+    // For qfq adjustment, get the factor data
+    if (adjust === 'qfq') {
+      const qfqUrl = `https://finance.sina.com.cn/us_stock/company/reinstatement/${symbol}_qfq.js`;
+      const qfqText = await httpGetText(qfqUrl);
 
-      df = {
-        ...df,
-        data: df.data.filter(row => {
-          const date = row[0] as Date;
-          if (start && date < start) return false;
-          if (end && date > end) return false;
-          return true;
-        }),
-      };
+      try {
+        const qfqDataMatch = qfqText.split('=');
+        if (qfqDataMatch.length >= 2) {
+          const qfqDataStr = qfqDataMatch[1].split('\n')[0];
+          const qfqData = eval('(' + qfqDataStr + ')');
+          if (qfqData?.data && qfqData.data.length > 0) {
+            const factorRows = qfqData.data;
+            // Each row: [date, adjust_value, qfq_factor]
+            const factorMap = new Map<string, { adjust: number; factor: number }>();
+            for (const fr of factorRows) {
+              const fDate = fr.d instanceof Date ? fr.d.toISOString().split('T')[0] : String(fr.d);
+              factorMap.set(fDate, {
+                adjust: Number(fr.c ?? fr[1] ?? 0),
+                factor: Number(fr.f ?? fr[2] ?? 1),
+              });
+            }
+
+            let lastFactor = { adjust: 0, factor: 1 };
+            rows = rows.map(row => {
+              const dateStr = String(row[0]);
+              if (factorMap.has(dateStr)) {
+                lastFactor = factorMap.get(dateStr)!;
+              }
+              const open = parseFloat(String(row[1])) * lastFactor.factor + lastFactor.adjust;
+              const high = parseFloat(String(row[2])) * lastFactor.factor + lastFactor.adjust;
+              const low = parseFloat(String(row[3])) * lastFactor.factor + lastFactor.adjust;
+              const close = parseFloat(String(row[4])) * lastFactor.factor + lastFactor.adjust;
+              return [
+                dateStr,
+                String(Math.round(open * 10000) / 10000),
+                String(Math.round(high * 10000) / 10000),
+                String(Math.round(low * 10000) / 10000),
+                String(Math.round(close * 10000) / 10000),
+                String(row[5]),
+              ];
+            });
+          }
+        }
+      } catch {
+        // If qfq factor fails, return unadjusted
+      }
     }
 
-    return df;
+    const columns = ['date', 'open', 'high', 'low', 'close', 'volume'];
+    return createDataFrame(columns, rows);
   } catch (error) {
     return createDataFrame([], []);
   }

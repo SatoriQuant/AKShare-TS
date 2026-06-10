@@ -74,22 +74,13 @@ export async function fx_quote_baidu(
         const values = listItems.slice(1).map((li: { key: string; value: string }) => li.value);
 
         if (values.length >= 3) {
-          const latestPrice = Number(values[0]);
-          const changeAmount = Number(values[1]);
-          let changePercent: number;
-          // Remove '%' and convert to decimal
-          if (typeof values[2] === 'string') {
-            changePercent = Number(values[2].replace('%', '')) / 100;
-          } else {
-            changePercent = Number(values[2]) / 100;
-          }
-
+          // Keep values as strings to match Python output format
           rows.push([
             item.code,
             item.name,
-            latestPrice,
-            changeAmount,
-            changePercent,
+            values[0],
+            values[1],
+            values[2],
           ]);
         }
         itemsProcessed++;
@@ -111,7 +102,7 @@ export async function fx_quote_baidu(
   }
 
   if (allDataFrames.length === 0) {
-    return createDataFrame(columns, []);
+    return createDataFrame([], []);
   }
 
   return concat(allDataFrames);

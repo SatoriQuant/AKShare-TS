@@ -5,9 +5,7 @@
 import { httpGet } from '../utils/httpClient';
 import {
   createDataFrame,
-  fromCommaSeparatedStrings,
   DataFrame,
-  convertColumn,
 } from '../utils/dataframe';
 import { KlineData, StockInfo } from '../utils/types';
 
@@ -21,10 +19,10 @@ import { KlineData, StockInfo } from '../utils/types';
  * @param adjust 复权类型：qfq 前复权, hfq 后复权, "" 不复权
  */
 export async function stock_zh_a_hist(
-  symbol: string,
+  symbol: string = '000001',
   period: 'daily' | 'weekly' | 'monthly' = 'daily',
-  startDate?: string,
-  endDate?: string,
+  startDate: string = '19700101',
+  endDate: string = '20500101',
   adjust: 'qfq' | 'hfq' | '' = ''
 ): Promise<DataFrame> {
   // 确定市场代码
@@ -53,14 +51,13 @@ export async function stock_zh_a_hist(
   const url = 'https://push2his.eastmoney.com/api/qt/stock/kline/get';
   const params = {
     fields1: 'f1,f2,f3,f4,f5,f6',
-    fields2: 'f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61',
+    fields2: 'f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f116',
+    ut: '7eea3edcaed734bea9cbfc24409ed989',
     klt: periodMap[period],
     fqt: adjustParam,
     secid: `${market}.${symbol}`,
-    beg: startDate || '19700101',
-    end: endDate || '20500101',
-    lmt: '1000000',
-    _: Date.now(),
+    beg: startDate,
+    end: endDate,
   };
 
   const data = await httpGet<any>(url, { params });
@@ -69,20 +66,27 @@ export async function stock_zh_a_hist(
     return createDataFrame([], []);
   }
 
-  const columns = [
-    '日期', '开盘', '收盘', '最高', '最低', '成交量', '成交额',
-    '振幅', '涨跌幅', '涨跌额', '换手率'
-  ];
+  const rows = data.data.klines
+    .map((item: string) => item.split(','))
+    .map((parts: string[]) => [
+      parts[0] ?? null,
+      symbol,
+      parts[1] ? Number(parts[1]) : null,
+      parts[2] ? Number(parts[2]) : null,
+      parts[3] ? Number(parts[3]) : null,
+      parts[4] ? Number(parts[4]) : null,
+      parts[5] ? Number(parts[5]) : null,
+      parts[6] ? Number(parts[6]) : null,
+      parts[7] ? Number(parts[7]) : null,
+      parts[8] ? Number(parts[8]) : null,
+      parts[9] ? Number(parts[9]) : null,
+      parts[10] ? Number(parts[10]) : null,
+    ]);
 
-  let df = fromCommaSeparatedStrings(data.data.klines, columns);
-
-  // 转换数据类型
-  df = convertColumn(df, '日期', 'date');
-  for (const col of ['开盘', '收盘', '最高', '最低', '成交量', '成交额', '振幅', '涨跌幅', '涨跌额', '换手率']) {
-    df = convertColumn(df, col, 'number');
-  }
-
-  return df;
+  return createDataFrame(
+    ['日期', '股票代码', '开盘', '收盘', '最高', '最低', '成交量', '成交额', '振幅', '涨跌幅', '涨跌额', '换手率'],
+    rows
+  );
 }
 
 /**

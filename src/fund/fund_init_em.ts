@@ -10,6 +10,20 @@ import {
   DataFrame,
 } from '../utils/dataframe';
 
+function parseLooseObject(text: string): any {
+  const start = text.indexOf('{');
+  if (start === -1) {
+    return null;
+  }
+  const body = text.slice(start).replace(/;\s*$/, '');
+  try {
+    return JSON.parse(body);
+  } catch {
+    const fn = new Function(`return (${body});`);
+    return fn();
+  }
+}
+
 /**
  * 获取新成立基金数据 - 东方财富
  * https://fund.eastmoney.com/data/xinfound.html
@@ -27,13 +41,8 @@ export async function fund_new_found_em(): Promise<DataFrame> {
   try {
     const text = await httpGetText(url, { params });
 
-    // 解析 var newfunddata={...}
-    const match = text.match(/var\s+newfunddata\s*=\s*(\{.*\})/s);
-    if (!match) {
-      return createDataFrame([], []);
-    }
-
-    const data = JSON.parse(match[1]);
+    // 解析 var newfunddata={...} (loose JS object notation)
+    const data = parseLooseObject(text.replace(/^\s*var\s+newfunddata\s*=\s*/i, ''));
 
     if (!data?.datas) {
       return createDataFrame([], []);
@@ -50,12 +59,12 @@ export async function fund_new_found_em(): Promise<DataFrame> {
       item[2] || '',
       item[4] || '',
       item[10] || '',
-      parseFloat(item[5]) || null,
+      item[5] || '',
       item[6] || '',
       parseFloat(String(item[7] || '').replace(/,/g, '')) || null,
       item[8] || '',
       item[9] || '',
-      parseFloat(String(item[18] || '').replace('%', '')) || null,
+      item[18] || '',
     ]);
 
     return createDataFrame(columns, rows);

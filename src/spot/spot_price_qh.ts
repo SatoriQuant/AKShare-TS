@@ -116,11 +116,11 @@ export async function spot_price_qh(symbol: string = '螺纹钢'): Promise<DataF
     return createDataFrame([], []);
   }
 
-  const columns = ['日期', '期货收盘价', '现货价格'];
+  const columns = ['日期', '现货价格', '期货收盘价'];
   const rows = data.data.list.map((item: any) => [
     item.date,
-    Number(item.fp),
     Number(item.sp),
+    Number(item.fp),
   ]);
 
   let df = createDataFrame(columns, rows);

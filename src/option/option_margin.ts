@@ -3,6 +3,7 @@
  * https://www.iweiai.com/qihuo/yuanyou
  */
 
+import { load } from 'cheerio';
 import { httpGetText } from '../utils/httpClient';
 import {
   createDataFrame,
@@ -23,13 +24,20 @@ export async function option_margin_symbol(): Promise<DataFrame> {
       },
     });
 
-    // 解析HTML获取品种列表
-    // 这里简化处理，返回空DataFrame
-    // 实际实现需要HTML解析库
-    console.warn('此函数需要HTML解析支持');
-
+    const $ = load(text);
     const columns = ['symbol', 'url'];
-    return createDataFrame(columns, []);
+    const rows: any[][] = [];
+
+    $('a').each((_, el) => {
+      const href = $(el).attr('href') || '';
+      const name = $(el).text().trim();
+      if (href.includes('/qiquan/') && name) {
+        const fullUrl = href.startsWith('http') ? href : `https://www.iweiai.com${href}`;
+        rows.push([name, fullUrl]);
+      }
+    });
+
+    return createDataFrame(columns, rows);
   } catch {
     return createDataFrame([], []);
   }
@@ -37,6 +45,7 @@ export async function option_margin_symbol(): Promise<DataFrame> {
 
 /**
  * 获取商品期权保证金
+ * Python columns: 合约, 结算价, 交易乘数, 买方权利金, 卖方保证金, 开仓手续费, 平今手续费, 平昨手续费, 手续费(开+平今), 更新时间
  * @param symbol 商品期权品种名称，如 "原油期权"
  * @returns 商品期权保证金
  */
@@ -44,20 +53,42 @@ export async function option_margin(
   symbol: string = '原油期权'
 ): Promise<DataFrame> {
   try {
-    // 首先获取品种URL
+    // First get the symbol list to find the target URL
     const symbolDf = await option_margin_symbol();
-    const symbolIndex = symbolDf.columns.indexOf('symbol');
-    const urlIndex = symbolDf.columns.indexOf('url');
+    const symbolIdx = symbolDf.columns.indexOf('symbol');
+    const urlIdx = symbolDf.columns.indexOf('url');
 
-    if (symbolIndex === -1 || urlIndex === -1 || symbolDf.data.length === 0) {
-      return createDataFrame([], []);
+    if (symbolIdx === -1 || urlIdx === -1 || symbolDf.data.length === 0) {
+      // Fallback: construct URL directly
+      const symbolMap: Record<string, string> = {
+        '原油期权': 'yuanyou',
+        '铜期权': 'tong',
+        '天然橡胶期权': 'tianranxiangjiao',
+        '黄金期权': 'huangjin',
+        '豆粕期权': 'doupo',
+        '玉米期权': 'yumi',
+        '铁矿石期权': 'tiekuangshi',
+        '棉花期权': 'mianhua',
+        '白糖期权': 'baitang',
+        'PTA期权': 'pta',
+        '甲醇期权': 'jiachun',
+        '菜籽粕期权': 'caizipo',
+        '动力煤期权': 'donglimei',
+        'LPG期权': 'lpg',
+        '聚丙烯期权': 'jubingxi',
+        'PVC期权': 'pvc',
+        '线型低密度聚乙烯期权': 'lldpe',
+      };
+      const pathKey = symbolMap[symbol] || symbol.replace('期权', '');
+      const fallbackUrl = `https://www.iweiai.com/qiquan/${pathKey}`;
+      return await parseOptionMarginPage(fallbackUrl);
     }
 
-    // 查找品种URL
+    // Find the target URL
     let targetUrl = '';
     for (const row of symbolDf.data) {
-      if (row[symbolIndex] === symbol) {
-        targetUrl = row[urlIndex];
+      if (row[symbolIdx] === symbol) {
+        targetUrl = row[urlIdx];
         break;
       }
     }
@@ -66,25 +97,52 @@ export async function option_margin(
       return createDataFrame([], []);
     }
 
-    // 获取保证金数据
-    const text = await httpGetText(targetUrl, {
-      headers: {
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      },
-    });
-
-    // 解析HTML表格
-    // 这里简化处理，返回空DataFrame
-    // 实际实现需要HTML解析库
-    console.warn('此函数需要HTML解析支持');
-
-    const columns = [
-      '合约', '结算价', '交易乘数', '买方权利金', '卖方保证金',
-      '开仓手续费', '平今手续费', '平昨手续费', '手续费(开+平今)', '更新时间'
-    ];
-
-    return createDataFrame(columns, []);
+    return await parseOptionMarginPage(targetUrl);
   } catch {
     return createDataFrame([], []);
   }
+}
+
+/**
+ * Parse option margin data from an iweiai.com page
+ */
+async function parseOptionMarginPage(url: string): Promise<DataFrame> {
+  const text = await httpGetText(url, {
+    headers: {
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    },
+  });
+
+  const $ = load(text);
+
+  // Extract update time from <small> tag
+  const smallText = $('small').first().text().trim();
+  const updatedTime = smallText.replace(/^最近更新[：:]\s*/, '');
+
+  const columns = [
+    '合约标的', '合约代码', '结算价', '交易乘数', '买方权利金', '卖方保证金',
+    '手续费单位', '开仓手续费', '平今手续费', '平昨手续费', '手续费(开+平今)', '更新时间',
+  ];
+
+  const rows: any[][] = [];
+
+  // Find the main data table
+  $('table').first().find('tr').each((rowIdx, row) => {
+    if (rowIdx === 0) return; // skip header
+
+    const cells: string[] = [];
+    $(row).find('td').each((__, cell) => {
+      cells.push($(cell).text().trim());
+    });
+
+    if (cells.length >= 11) {
+      rows.push([
+        cells[0], cells[1], cells[2], cells[3], cells[4], cells[5],
+        cells[6], cells[7], cells[8], cells[9], cells[10],
+        updatedTime,
+      ]);
+    }
+  });
+
+  return createDataFrame(columns, rows);
 }

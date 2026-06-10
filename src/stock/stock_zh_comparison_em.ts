@@ -49,6 +49,7 @@ export async function stock_zh_growth_comparison_em(
     '净利润增长率-3年复合', '净利润增长率-24A',
     '净利润增长率-TTM', '净利润增长率-25E',
     '净利润增长率-26E', '净利润增长率-27E',
+    '基本每股收益增长率-3年复合排名',
   ];
 
   const rows = data.result.data.map((item: any) => [
@@ -60,6 +61,7 @@ export async function stock_zh_growth_comparison_em(
     item.YYSR_1E, item.YYSR_2E, item.YYSR_3E,
     item.JLR_3Y, item.JLRTB, item.JLRTTM,
     item.JLR_1E, item.JLR_2E, item.JLR_3E,
+    item.MGSY_3Y_PAIMING != null ? String(item.MGSY_3Y_PAIMING) : null,
   ]);
 
   return createDataFrame(columns, rows);
@@ -160,6 +162,7 @@ export async function stock_zh_dupont_comparison_em(
     '净利率-3年平均', '净利率-22A', '净利率-23A', '净利率-24A',
     '总资产周转率-3年平均', '总资产周转率-22A', '总资产周转率-23A', '总资产周转率-24A',
     '权益乘数-3年平均', '权益乘数-22A', '权益乘数-23A', '权益乘数-24A',
+    'ROE-3年平均排名',
   ];
 
   const rows = data.result.data.map((item: any) => [
@@ -169,6 +172,7 @@ export async function stock_zh_dupont_comparison_em(
     item.XSJLL_AVG, item.XSJLL_L3, item.XSJLL_L2, item.XSJLL_L1,
     item.TOAZZL_AVG, item.TOAZZL_L3, item.TOAZZL_L2, item.TOAZZL_L1,
     item.QYCS_AVG, item.QYCS_L3, item.QYCS_L2, item.QYCS_L1,
+    item.ROE_3Y_PAIMING != null ? String(item.ROE_3Y_PAIMING) : null,
   ]);
 
   return createDataFrame(columns, rows);

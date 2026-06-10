@@ -3,7 +3,8 @@
  * https://www.9qihuo.com/qihuoshouxufei
  */
 
-import { httpGetText } from '../utils/httpClient';
+import axios from 'axios';
+import { load } from 'cheerio';
 import {
   createDataFrame,
   DataFrame,
@@ -22,24 +23,24 @@ type ExchangeName =
  * 解析HTML表格为行数组
  */
 function parseHtmlTable(html: string): string[][] {
-  const tableMatch = html.match(/<table[^>]*>([\s\S]*?)<\/table>/i);
-  if (!tableMatch) return [];
-
-  const tableHtml = tableMatch[1];
-  const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  const $ = load(html);
   const rows: string[][] = [];
-  let rowMatch;
 
-  while ((rowMatch = rowRegex.exec(tableHtml)) !== null) {
-    const cellRegex = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
+  const table = $('table').first();
+  if (!table.length) return rows;
+
+  table.find('tr').each((_, tr) => {
     const cells: string[] = [];
-    let cellMatch;
-    while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
-      cells.push(cellMatch[1].replace(/<[^>]*>/g, '').trim());
+    $(tr)
+      .find('th,td')
+      .each((__, cell) => {
+        const text = $(cell).text().replace(/\s+/g, ' ').trim();
+        cells.push(text);
+      });
+    if (cells.length > 0) {
+      rows.push(cells);
     }
-    if (cells.length > 0) rows.push(cells);
-  }
-
+  });
   return rows;
 }
 
@@ -88,7 +89,7 @@ function processExchangeData(
       if (raw.includes('万分之')) {
         const parts = raw.split('/');
         const ratio = parseFloat(parts[0]) / 10000;
-        return { ratio: isNaN(ratio) ? null : ratio, yuan: null };
+        return { ratio: isNaN(ratio) ? null : ratio, yuan: raw.trim() || null };
       } else if (raw.includes('元')) {
         return { ratio: null, yuan: raw.replace('元', '') };
       }
@@ -134,17 +135,40 @@ function processExchangeData(
 export async function futures_comm_info(
   symbol: ExchangeName = '所有'
 ): Promise<DataFrame> {
-  const headers = {
+  const headers: Record<string, string> = {
     'User-Agent':
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
     Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
     'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+    Connection: 'keep-alive',
     Referer: 'https://www.9qihuo.com/',
   };
 
   try {
-    const url = 'https://www.9qihuo.com/qihuoshouxufei';
-    const html = await httpGetText(url, { headers });
+    // 先拿挑战 Cookie，再访问目标页
+    const preResp = await axios.get('https://www.9qihuo.com/', {
+      headers,
+      validateStatus: () => true,
+      timeout: 30000,
+    });
+    const cookie = (preResp.headers['set-cookie'] || [])
+      .map((item: string) => item.split(';')[0])
+      .join('; ');
+
+    const pageResp = await axios.get('https://www.9qihuo.com/qihuoshouxufei', {
+      headers: {
+        ...headers,
+        ...(cookie ? { Cookie: cookie } : {}),
+      },
+      validateStatus: () => true,
+      timeout: 30000,
+    });
+
+    if (pageResp.status !== 200 || typeof pageResp.data !== 'string') {
+      return createDataFrame([], []);
+    }
+
+    const html = pageResp.data;
 
     const allRows = parseHtmlTable(html);
     if (allRows.length < 10) {
@@ -199,7 +223,13 @@ export async function futures_comm_info(
       allData.push(...processed.rows);
     }
 
-    return createDataFrame(columns, allData);
+    // 提取页面中的更新时间文本，与 Python 版保持字段一致
+    const updateMatch = html.match(/手续费更新时间：([^，]+)，价格更新时间：([^。]+)\。?/);
+    const commUpdate = updateMatch?.[1]?.trim() || '';
+    const priceUpdate = updateMatch?.[2]?.trim() || '';
+    const enhanced = allData.map((row) => [...row, commUpdate, priceUpdate]);
+
+    return createDataFrame([...columns, '手续费更新时间', '价格更新时间'], enhanced);
   } catch {
     return createDataFrame([], []);
   }

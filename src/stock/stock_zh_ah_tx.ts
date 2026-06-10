@@ -1,9 +1,10 @@
 /**
- * AKShare TypeScript - 腾讯财经A+H股数据接口
+ * AKShare TypeScript - A+H股数据接口
+ * 数据源: 腾讯财经 (QQ Finance)
  * https://stockapp.finance.qq.com/mstats/#mod=list&id=hk_ah&module=HK&type=AH
  */
 
-import { httpGetText } from '../utils/httpClient';
+import { httpGetText, httpGet } from '../utils/httpClient';
 import {
   createDataFrame,
   DataFrame,
@@ -11,36 +12,88 @@ import {
 } from '../utils/dataframe';
 
 /**
- * 腾讯财经-港股-AH-实时行情
- * https://stockapp.finance.qq.com/mstats/#mod=list&id=hk_ah&module=HK&type=AH
- *
- * @param page 页码，默认 0
+ * 腾讯财经-港股-AH-获取总页数
  */
-export async function stock_zh_ah_spot(
-  page: number = 0
-): Promise<DataFrame> {
-  const url = 'https://proxy.finance.qq.com/ifzqgtimg/appstock/app/HkHdInfo/getHkAhData';
+async function getZhAhPageCount(): Promise<number> {
+  const url = 'http://stock.gtimg.cn/data/hk_rank.php';
   const params = {
-    market: 'hk',
-    type: 'AH',
-    key: 'code',
-    order: '1',
-    reqPage: page.toString(),
-    stockType: '',
-    _bk1: '',
-    _: Date.now().toString(),
+    board: 'A_H',
+    metric: 'price',
+    pageSize: '20',
+    reqPage: '1',
+    order: 'decs',
+    var_name: 'list_data',
   };
 
+  const text = await httpGetText(url, {
+    params,
+    headers: {
+      Referer: 'http://stockapp.finance.qq.com/mstats/',
+    },
+  });
+
+  // Parse response: list_data={data:{page_count:N,...}}
+  const jsonStart = text.indexOf('{');
+  const jsonEnd = text.lastIndexOf('}');
+  if (jsonStart === -1 || jsonEnd === -1) return 1;
+
   try {
-    const text = await httpGetText(url, { params });
-    const jsonStart = text.indexOf('{');
-    const jsonEnd = text.lastIndexOf('}');
-    if (jsonStart === -1 || jsonEnd === -1) {
-      return createDataFrame([], []);
+    const data = JSON.parse(text.substring(jsonStart, jsonEnd + 1));
+    return data?.data?.page_count || 1;
+  } catch {
+    return 1;
+  }
+}
+
+/**
+ * 腾讯财经-AH股-实时行情
+ * https://stockapp.finance.qq.com/mstats/#mod=list&id=hk_ah&module=HK&type=AH
+ */
+export async function stock_zh_ah_spot(): Promise<DataFrame> {
+  try {
+    const pageCount = await getZhAhPageCount();
+    const allRows: any[][] = [];
+
+    for (let i = 0; i < pageCount; i++) {
+      const url = 'http://stock.gtimg.cn/data/hk_rank.php';
+      const params = {
+        board: 'A_H',
+        metric: 'price',
+        pageSize: '20',
+        reqPage: String(i),
+        order: 'decs',
+        var_name: 'list_data',
+      };
+
+      const text = await httpGetText(url, {
+        params,
+        headers: {
+          Referer: 'http://stockapp.finance.qq.com/mstats/',
+        },
+      });
+
+      const jsonStart = text.indexOf('{');
+      const jsonEnd = text.lastIndexOf('}');
+      if (jsonStart === -1 || jsonEnd === -1) continue;
+
+      try {
+        const data = JSON.parse(text.substring(jsonStart, jsonEnd + 1));
+        const pageData = data?.data?.page_data;
+        if (!pageData || !Array.isArray(pageData)) continue;
+
+        for (const item of pageData) {
+          // Each item is a string like "code~name~price~chg_pct~chg~buy~sell~vol~amount~open~prev_close~high~low~..."
+          const parts = String(item).split('~');
+          if (parts.length >= 13) {
+            allRows.push(parts);
+          }
+        }
+      } catch {
+        continue;
+      }
     }
 
-    const data = JSON.parse(text.substring(jsonStart, jsonEnd + 1));
-    if (!data?.data?.page_data) {
+    if (allRows.length === 0) {
       return createDataFrame([], []);
     }
 
@@ -49,24 +102,21 @@ export async function stock_zh_ah_spot(
       '买入', '卖出', '成交量', '成交额', '今开', '昨收', '最高', '最低',
     ];
 
-    const rows = data.data.page_data.map((item: string) => {
-      const parts = item.split('~');
-      return [
-        parts[0],                    // 代码
-        parts[1],                    // 名称
-        parseFloat(parts[2]) || NaN, // 最新价
-        parseFloat(parts[3]) || NaN, // 涨跌幅
-        parseFloat(parts[4]) || NaN, // 涨跌额
-        parseFloat(parts[5]) || NaN, // 买入
-        parseFloat(parts[6]) || NaN, // 卖出
-        parseInt(parts[7]) || NaN,   // 成交量
-        parseFloat(parts[8]) || NaN, // 成交额
-        parseFloat(parts[9]) || NaN, // 今开
-        parseFloat(parts[10]) || NaN,// 昨收
-        parseFloat(parts[11]) || NaN,// 最高
-        parseFloat(parts[12]) || NaN,// 最低
-      ];
-    });
+    const rows = allRows.map(parts => [
+      parts[0],                          // 代码
+      parts[1],                          // 名称
+      parts[2],                          // 最新价
+      parts[3],                          // 涨跌幅
+      parts[4],                          // 涨跌额
+      parts[5],                          // 买入
+      parts[6],                          // 卖出
+      parts[7],                          // 成交量
+      parts[8],                          // 成交额
+      parts[9],                          // 今开
+      parts[10],                         // 昨收
+      parts[11],                         // 最高
+      parts[12],                         // 最低
+    ]);
 
     return createDataFrame(columns, rows);
   } catch (error) {
@@ -75,7 +125,7 @@ export async function stock_zh_ah_spot(
 }
 
 /**
- * 腾讯财经-港股-AH-股票名称
+ * 腾讯财经-AH股-股票名称
  * https://stockapp.finance.qq.com/mstats/#mod=list&id=hk_ah&module=HK&type=AH
  */
 export async function stock_zh_ah_name(): Promise<DataFrame> {
@@ -85,7 +135,6 @@ export async function stock_zh_ah_name(): Promise<DataFrame> {
       return createDataFrame([], []);
     }
 
-    // Only keep code and name columns
     const codeIdx = df.columns.indexOf('代码');
     const nameIdx = df.columns.indexOf('名称');
 

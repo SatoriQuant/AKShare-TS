@@ -8,27 +8,38 @@ import {
   createDataFrame,
   DataFrame,
 } from '../utils/dataframe';
+import { decodeSinaData } from '../utils/jsDecode';
 
 /**
  * 新浪财经-行情中心-港股指数实时行情
  * https://vip.stock.finance.sina.com.cn/mkt/#zs_hk
  */
 export async function stock_hk_index_spot_sina(): Promise<DataFrame> {
-  const url =
-    'https://hq.sinajs.cn/rn=mtf2t&list=hkCES100,hkCES120,hkCES280,hkCES300,hkCESA80,hkCESG10,' +
-    'hkCESHKM,hkCSCMC,hkCSHK100,hkCSHKDIV,hkCSHKLC,hkCSHKLRE,hkCSHKMCS,hkCSHKME,hkCSHKPE,hkCSHKSE,' +
-    'hkCSI300,hkCSRHK50,hkGEM,hkHKL,hkHSCCI,hkHSCEI,hkHSI,hkHSMBI,hkHSMOGI,hkHSMPI,hkHSTECH,hkSSE180,' +
-    'hkSSE180GV,hkSSE380,hkSSE50,hkSSECEQT,hkSSECOMP,hkSSEDIV,hkSSEITOP,hkSSEMCAP,hkSSEMEGA,hkVHSI';
+  const symbols = [
+    'hkCES100', 'hkCES120', 'hkCES280', 'hkCES300', 'hkCESA80', 'hkCESG10',
+    'hkCESHKM', 'hkCSCMC', 'hkCSHK100', 'hkCSHKDIV', 'hkCSHKLC', 'hkCSHKLRE',
+    'hkCSHKMCS', 'hkCSHKME', 'hkCSHKPE', 'hkCSHKSE', 'hkCSI300', 'hkCSRHK50',
+    'hkGEM', 'hkHKL', 'hkHSCCI', 'hkHSCEI', 'hkHSI', 'hkHSMBI', 'hkHSMOGI',
+    'hkHSMPI', 'hkHSTECH', 'hkSSE180', 'hkSSE180GV', 'hkSSE380', 'hkSSE50',
+    'hkSSECEQT', 'hkSSECOMP', 'hkSSEDIV', 'hkSSEITOP', 'hkSSEMCAP', 'hkSSEMEGA',
+    'hkVHSI',
+  ];
+
+  const url = `https://hq.sinajs.cn/rn=${Date.now()}&list=${symbols.join(',')}`;
 
   const text = await httpGetText(url, {
-    headers: { Referer: 'https://vip.stock.finance.sina.com.cn/' },
+    headers: {
+      Referer: 'https://vip.stock.finance.sina.com.cn/',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    },
   });
 
-  const dataLines = text.split('\n').filter(line => line.includes('"'));
+  const dataLines = text.split('\n').filter(line => line.includes('="') && !line.includes('=""'));
   const dataList = dataLines.map(line => {
-    const content = line.split('"')[1];
-    return content.split(',');
-  });
+    const match = line.match(/="([^"]*)"/);
+    if (!match) return null;
+    return match[1].split(',');
+  }).filter(item => item !== null) as string[][];
 
   if (dataList.length === 0) {
     return createDataFrame([], []);
@@ -42,13 +53,13 @@ export async function stock_hk_index_spot_sina(): Promise<DataFrame> {
   const rows = dataList.map(parts => [
     parts[0],       // 代码
     parts[1],       // 名称
-    parseFloat(parts[6]),  // 最新价
-    parseFloat(parts[7]),  // 涨跌额
-    parseFloat(parts[8]),  // 涨跌幅
-    parseFloat(parts[2]),  // 昨收
-    parseFloat(parts[3]),  // 今开
-    parseFloat(parts[4]),  // 最高
-    parseFloat(parts[5]),  // 最低
+    parseFloat(parts[6]) || NaN,  // 最新价
+    parseFloat(parts[7]) || NaN,  // 涨跌额
+    parseFloat(parts[8]) || NaN,  // 涨跌幅
+    parseFloat(parts[2]) || NaN,  // 昨收
+    parseFloat(parts[3]) || NaN,  // 今开
+    parseFloat(parts[4]) || NaN,  // 最高
+    parseFloat(parts[5]) || NaN,  // 最低
   ]);
 
   return createDataFrame(columns, rows);
@@ -184,41 +195,59 @@ export async function stock_hk_index_daily_em(symbol: string = 'HSTECF2L'): Prom
  * 新浪财经-港股指数-历史行情数据
  * https://stock.finance.sina.com.cn/hkstock/quotes/CES100.html
  *
+ * Uses Sina's klc2_kl.js endpoint with JS decoding (same as Python AKShare).
+ *
  * @param symbol 港股指数代码，如 "CES100"
  */
 export async function stock_hk_index_daily_sina(symbol: string = 'CES100'): Promise<DataFrame> {
-  const url = `https://finance.sina.com.cn/stock/hkstock/${symbol}/klc2_kl.js`;
-
-  const text = await httpGetText(url, {
-    params: { d: '2023_5_01' },
-  });
-
-  // Parse the JS response - format: var xxx = [{...},...]
-  const jsonStr = text.split('=')[1]?.split(';')[0]?.replace(/"/g, '');
-  if (!jsonStr) {
-    return createDataFrame([], []);
-  }
-
   try {
-    // The data is returned as a JS array of objects
-    const match = text.match(/\[[\s\S]*\]/);
-    if (!match) {
+    const url = `https://finance.sina.com.cn/stock/hkstock/${symbol}/klc2_kl.js`;
+    const params = { d: '2023_5_01' };
+    const text = await httpGetText(url, {
+      params,
+      headers: {
+        Referer: `https://stock.finance.sina.com.cn/hkstock/quotes/${symbol}.html`,
+      },
+    });
+
+    if (!text || text.trim().length === 0) {
       return createDataFrame([], []);
     }
-    const data = JSON.parse(match[0]);
 
-    const columns = ['date', 'open', 'close', 'high', 'low', 'volume'];
-    const rows = data.map((item: any) => [
-      item.date,
-      parseFloat(item.open),
-      parseFloat(item.close),
-      parseFloat(item.high),
-      parseFloat(item.low),
-      parseFloat(item.volume),
-    ]);
+    // Extract encoded string: var xx = "encoded_data";
+    const encodedMatch = text.split('=');
+    if (encodedMatch.length < 2) {
+      return createDataFrame([], []);
+    }
+    const encodedStr = encodedMatch[1].split(';')[0].replace(/"/g, '');
+
+    // Decode using the hk_js_decode algorithm
+    const decoded = decodeSinaData(encodedStr);
+    if (!decoded || decoded.length === 0) {
+      return createDataFrame([], []);
+    }
+
+    const columns = ['date', 'open', 'high', 'low', 'close', 'volume', 'amount'];
+    const rows = decoded.map((item: any) => {
+      let dateStr: string;
+      if (item.date && typeof item.date.toISOString === 'function') {
+        dateStr = item.date.toISOString().split('T')[0];
+      } else {
+        dateStr = String(item.date ?? '');
+      }
+      return [
+        dateStr,
+        String(item.open ?? ''),
+        String(item.high ?? ''),
+        String(item.low ?? ''),
+        String(item.close ?? ''),
+        String(item.volume ?? ''),
+        String(item.amount ?? ''),
+      ];
+    });
 
     return createDataFrame(columns, rows);
-  } catch {
+  } catch (error) {
     return createDataFrame([], []);
   }
 }

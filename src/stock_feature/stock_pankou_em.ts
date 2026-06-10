@@ -97,20 +97,28 @@ export async function stock_board_change_em(): Promise<DataFrame> {
     return createDataFrame([], []);
   }
 
+  const directionMap: Record<number, string> = {
+    0: '大笔买入',
+    1: '大笔卖出',
+  };
+
   const columns = [
     '板块名称', '涨跌幅', '主力净流入', '板块异动总次数',
-    '板块异动最频繁个股及所属类型-买卖方向', '板块异动最频繁个股及所属类型-股票代码',
+    '板块异动最频繁个股及所属类型-股票代码',
     '板块异动最频繁个股及所属类型-股票名称',
+    '板块异动最频繁个股及所属类型-买卖方向',
+    '板块具体异动类型列表及出现次数',
   ];
 
   const rows = data.data.allbk.map((item: any) => [
     item.n,
-    item.zdp,
-    item.zljlr,
-    item.cnt,
-    item.ms?.m,
-    item.ms?.c,
-    item.ms?.n,
+    String(item.u ?? ''),
+    String(item.zjl ?? ''),
+    String(item.ct ?? ''),
+    String(item.ms?.c ?? ''),
+    String(item.ms?.n ?? ''),
+    directionMap[item.ms?.m] ?? String(item.ms?.m ?? ''),
+    item.ydl ? JSON.stringify(item.ydl) : '',
   ]);
 
   return createDataFrame(columns, rows);

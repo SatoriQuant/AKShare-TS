@@ -3,6 +3,7 @@
  * 新浪财经-指数成分股 / 中证指数-成分股
  */
 
+import * as XLSX from 'xlsx';
 import { httpGet, httpGetText } from '../utils/httpClient';
 import {
   createDataFrame,
@@ -59,25 +60,41 @@ export async function index_stock_cons_old_sina(symbol: string = '399639'): Prom
 /**
  * 中证指数网站-成份股目录
  * https://www.csindex.com.cn/zh-CN/indices/index-detail/000300
+ * Python columns: 日期, 指数代码, 指数名称, 指数英文名称, 成分券代码, 成分券名称, 成分券英文名称, 交易所, 交易所英文名称
  *
  * @param symbol 指数代码，如 "000300"
  */
 export async function index_stock_cons_csindex(symbol: string = '000300'): Promise<DataFrame> {
   const url = `https://oss-ch.csindex.com.cn/static/html/csindex/public/uploads/file/autofile/cons/${symbol}cons.xls`;
 
-  // Note: This returns an Excel file. In a browser/Node environment,
-  // we would need a library to parse XLS. For now, we make the request
-  // and return the raw data or empty DataFrame if parsing isn't possible.
   try {
     const response = await fetch(url);
     if (!response.ok) {
       return createDataFrame([], []);
     }
 
-    // If we're in a Node.js environment with xlsx support, parse it
-    // For now, return empty as XLS parsing requires additional dependencies
-    console.warn('index_stock_cons_csindex: XLS parsing requires additional setup');
-    return createDataFrame([], []);
+    const buffer = await response.arrayBuffer();
+    const workbook = XLSX.read(Buffer.from(buffer), { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) {
+      return createDataFrame([], []);
+    }
+
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' }) as any[][];
+    if (rows.length <= 1) {
+      return createDataFrame([], []);
+    }
+
+    const columns = [
+      '日期', '指数代码', '指数名称', '指数英文名称',
+      '成分券代码', '成分券名称', '成分券英文名称',
+      '交易所', '交易所英文名称',
+    ];
+
+    const data = rows.slice(1).map((row) => columns.map((_, index) => row[index] ?? ''));
+
+    return createDataFrame(columns, data);
   } catch {
     return createDataFrame([], []);
   }
@@ -86,25 +103,41 @@ export async function index_stock_cons_csindex(symbol: string = '000300'): Promi
 /**
  * 中证指数网站-样本权重
  * https://www.csindex.com.cn/zh-CN/indices/index-detail/000300
+ * Python columns: 日期, 指数代码, 指数名称, 指数英文名称, 成分券代码, 成分券名称, 成分券英文名称, 交易所, 交易所英文名称, 权重
  *
  * @param symbol 指数代码，如 "000300"
  */
 export async function index_stock_cons_weight_csindex(symbol: string = '000300'): Promise<DataFrame> {
   const url = `https://oss-ch.csindex.com.cn/static/html/csindex/public/uploads/file/autofile/closeweight/${symbol}closeweight.xls`;
 
-  // Note: This returns an Excel file. In a browser/Node environment,
-  // we would need a library to parse XLS. For now, we make the request
-  // and return the raw data or empty DataFrame if parsing isn't possible.
   try {
     const response = await fetch(url);
     if (!response.ok) {
       return createDataFrame([], []);
     }
 
-    // If we're in a Node.js environment with xlsx support, parse it
-    // For now, return empty as XLS parsing requires additional dependencies
-    console.warn('index_stock_cons_weight_csindex: XLS parsing requires additional setup');
-    return createDataFrame([], []);
+    const buffer = await response.arrayBuffer();
+    const workbook = XLSX.read(Buffer.from(buffer), { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) {
+      return createDataFrame([], []);
+    }
+
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' }) as any[][];
+    if (rows.length <= 1) {
+      return createDataFrame([], []);
+    }
+
+    const columns = [
+      '日期', '指数代码', '指数名称', '指数英文名称',
+      '成分券代码', '成分券名称', '成分券英文名称',
+      '交易所', '交易所英文名称', '权重',
+    ];
+
+    const data = rows.slice(1).map((row) => columns.map((_, index) => row[index] ?? ''));
+
+    return createDataFrame(columns, data);
   } catch {
     return createDataFrame([], []);
   }
@@ -167,12 +200,35 @@ export async function index_stock_cons_sina(symbol: string = '000300'): Promise<
     }
 
     const columns = [
-      '代码', '名称', '最新价', '涨跌额', '涨跌幅',
-      '买入', '卖出', '昨收', '今开', '最高', '最低',
-      '成交量', '成交额',
+      'symbol', 'code', 'name', 'trade', 'pricechange', 'changepercent',
+      'buy', 'sell', 'settlement', 'open', 'high', 'low',
+      'volume', 'amount', 'ticktime', 'per', 'pb', 'mktcap', 'nmc', 'turnoverratio',
     ];
 
-    return createDataFrame(columns, allRows);
+    const expandedRows = allRows.map((row: any[]) => [
+      row[0],  // symbol
+      row[0] ? row[0].replace(/^(sh|sz)/, '') : '',  // code
+      row[1],  // name
+      row[2],  // trade
+      row[3],  // pricechange
+      row[4],  // changepercent
+      row[5],  // buy
+      row[6],  // sell
+      row[7],  // settlement
+      row[8],  // open
+      row[9],  // high
+      row[10], // low
+      row[11], // volume
+      row[12], // amount
+      '',      // ticktime
+      '',      // per
+      '',      // pb
+      '',      // mktcap
+      '',      // nmc
+      '',      // turnoverratio
+    ]);
+
+    return createDataFrame(columns, expandedRows);
   }
 
   // For other indices
@@ -193,13 +249,14 @@ export async function index_stock_cons_sina(symbol: string = '000300'): Promise<
   }
 
   const columns = [
-    '代码', '名称', '最新价', '涨跌额', '涨跌幅',
-    '买入', '卖出', '昨收', '今开', '最高', '最低',
-    '成交量', '成交额',
+    'symbol', 'code', 'name', 'trade', 'pricechange', 'changepercent',
+    'buy', 'sell', 'settlement', 'open', 'high', 'low',
+    'volume', 'amount', 'ticktime', 'per', 'pb', 'mktcap', 'nmc', 'turnoverratio',
   ];
 
   const rows = data.map((item: any) => [
     item.symbol,
+    item.symbol ? item.symbol.replace(/^(sh|sz)/, '') : '',
     item.name,
     item.trade,
     item.pricechange,
@@ -212,6 +269,12 @@ export async function index_stock_cons_sina(symbol: string = '000300'): Promise<
     item.low,
     item.volume,
     item.amount,
+    item.ticktime || '',
+    item.per || '',
+    item.pb || '',
+    item.mktcap || '',
+    item.nmc || '',
+    item.turnoverratio || '',
   ]);
 
   return createDataFrame(columns, rows);

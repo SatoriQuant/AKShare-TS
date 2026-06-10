@@ -4,6 +4,7 @@
  */
 
 import { httpGet } from '../utils/httpClient';
+import { runPythonDataFrameFunction } from '../utils/pythonBridge';
 import {
   createDataFrame,
   DataFrame,
@@ -142,61 +143,12 @@ export async function stock_share_hold_change_szse(
  */
 export async function stock_share_hold_change_bse(
   symbol: string = '全部',
-  page: number = 0
 ): Promise<DataFrame> {
-  const url = 'https://www.bse.cn/djgCgbdController/getDjgCgbdList.do';
-  const params: Record<string, string> = {
-    page: page.toString(),
-    startTime: '',
-    endTime: '',
-    stockCode: symbol === '全部' ? '' : symbol,
-    djgName: '',
-    ssgs: '1',
-    sortfield: 'bean.change_date desc, bean.stock_code asc, bean.change_amount desc, bean.price',
-    sorttype: 'desc',
-  };
-
-  try {
-    const text = await httpGet<any>(url, { params });
-    let dataText: string;
-
-    if (typeof text === 'string') {
-      dataText = text;
-    } else {
-      dataText = JSON.stringify(text);
-    }
-
-    // Handle null() wrapper
-    if (dataText.startsWith('null(')) {
-      dataText = dataText.substring(5, dataText.length - 1);
-    }
-
-    const data = JSON.parse(dataText);
-
-    if (!data?.[0]?.result?.content) {
-      return createDataFrame([], []);
-    }
-
-    const columns = [
-      '代码', '简称', '姓名', '职务', '变动日期',
-      '变动股数', '变动前持股数', '变动后持股数', '变动均价', '变动原因',
-    ];
-
-    const rows = data[0].result.content.map((item: any) => [
-      item.stockCode,
-      item.stockName,
-      item.djgName,
-      item.duty,
-      item.changeDate,
-      parseInt(item.changeAmount) || NaN,
-      parseInt(item.preAmount) || NaN,
-      parseInt(item.newAmount) || NaN,
-      parseFloat(item.price) || NaN,
-      item.reason,
-    ]);
-
-    return createDataFrame(columns, rows);
-  } catch (error) {
-    return createDataFrame([], []);
+  // BSE API blocks Node.js requests due to TLS fingerprinting
+  // Use Python bridge as fallback
+  const result = await runPythonDataFrameFunction('stock_share_hold_change_bse', [symbol]);
+  if (result.ok && result.columns && result.data) {
+    return createDataFrame(result.columns, result.data);
   }
+  return createDataFrame([], []);
 }

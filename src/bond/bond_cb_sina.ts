@@ -61,7 +61,7 @@ export async function bond_cb_profile_sina(symbol: string = 'sz128039'): Promise
     }
 
     // 重命名为标准列名
-    const columns = ['项目', '值'];
+    const columns = ['item', 'value'];
     return createDataFrame(columns, df.data);
   } catch (error) {
     return createDataFrame([], []);
@@ -106,7 +106,7 @@ export async function bond_cb_summary_sina(symbol: string = 'sh155255'): Promise
       }
     }
 
-    const columns = ['项目', '值'];
+    const columns = ['item', 'value'];
     return createDataFrame(columns, allRows);
   } catch (error) {
     return createDataFrame([], []);

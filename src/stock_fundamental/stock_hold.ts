@@ -100,12 +100,16 @@ export async function stock_institute_hold_detail(
         mappedType,
         ...values.slice(0, 11).map((v: any) => {
           if (v === null || v === undefined || v === '') return null;
-          const num = Number(v);
-          return isNaN(num) ? v : num;
+          return String(v);
         }),
       ];
       rows.push(row);
     }
+  }
+
+  // If no data rows found, return empty DataFrame without columns (matching Python behavior)
+  if (rows.length === 0) {
+    return createDataFrame([], []);
   }
 
   return createDataFrame(columns, rows);

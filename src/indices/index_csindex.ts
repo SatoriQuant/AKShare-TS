@@ -3,6 +3,7 @@
  * https://www.csindex.com.cn/
  */
 
+import * as XLSX from 'xlsx';
 import { httpGet } from '../utils/httpClient';
 import {
   createDataFrame,
@@ -96,12 +97,11 @@ export async function stock_zh_index_value_csindex(
 /**
  * 中证指数网站-指数列表
  * https://www.csindex.com.cn/#/indices/family/list?index_series=1
+ * Python downloads an Excel file from csindex.com.cn and returns all index data.
  */
 export async function index_csindex_all(): Promise<DataFrame> {
   const url = 'https://www.csindex.com.cn/csindex-home/exportExcel/indexAll/CH';
 
-  // This endpoint returns an Excel file via POST
-  // We need to handle the POST request with JSON body
   try {
     const payload = {
       sorter: { sortField: 'null', sortOrder: null },
@@ -130,9 +130,24 @@ export async function index_csindex_all(): Promise<DataFrame> {
       return createDataFrame([], []);
     }
 
-    // Excel parsing requires additional setup
-    console.warn('index_csindex_all: Excel parsing requires additional setup');
-    return createDataFrame([], []);
+    const buffer = await response.arrayBuffer();
+    const workbook = XLSX.read(Buffer.from(buffer), { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) {
+      return createDataFrame([], []);
+    }
+
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' }) as any[][];
+    if (rows.length <= 1) {
+      return createDataFrame([], []);
+    }
+
+    // Use the header row from the Excel file as column names
+    const columns = rows[0].map((v: any) => String(v ?? ''));
+    const data = rows.slice(1).map((row) => columns.map((_, index) => row[index] ?? ''));
+
+    return createDataFrame(columns, data);
   } catch {
     return createDataFrame([], []);
   }

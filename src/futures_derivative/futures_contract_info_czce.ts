@@ -18,10 +18,15 @@ function parseXmlRecords(xml: string, tagName: string): Record<string, string>[]
 
   for (const match of matches) {
     const record: Record<string, string> = {};
+    // Strip the outer container tags to get only inner field content
+    const inner = match
+      .replace(new RegExp(`^<${tagName}>`, 'i'), '')
+      .replace(new RegExp(`<\\/${tagName}>$`, 'i'), '');
+
     const fieldRegex = /<([A-Za-z_]+)>([\s\S]*?)<\/\1>/g;
     let fieldMatch;
 
-    while ((fieldMatch = fieldRegex.exec(match)) !== null) {
+    while ((fieldMatch = fieldRegex.exec(inner)) !== null) {
       record[fieldMatch[1]] = fieldMatch[2].trim();
     }
 

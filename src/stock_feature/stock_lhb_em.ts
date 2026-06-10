@@ -107,11 +107,11 @@ export async function stock_lhb_stock_statistic_em(
 
   const url = 'https://datacenter-web.eastmoney.com/api/data/v1/get';
   const params = {
-    sortColumns: 'BILLBOARD_NUMS,LATEST_DATE,SECURITY_CODE',
+    sortColumns: 'BILLBOARD_TIMES,LATEST_TDATE,SECURITY_CODE',
     sortTypes: '-1,-1,1',
     pageSize: '5000',
     pageNumber: '1',
-    reportName: 'RPT_DAILYBILLBOARD_DAILYSTATS',
+    reportName: 'RPT_BILLBOARD_TRADEALL',
     columns: 'ALL',
     source: 'WEB',
     client: 'WEB',
@@ -137,30 +137,34 @@ export async function stock_lhb_stock_statistic_em(
   }
 
   const columns = [
-    '序号', '代码', '名称', '上榜次数', '龙虎榜净买额',
-    '龙虎榜买入额', '龙虎榜卖出额', '龙虎榜成交额',
-    '机构买入净额', '机构卖出净额', '机构买入额', '机构卖出额',
-    '上榜后1日', '上榜后2日', '上榜后5日', '上榜后10日', '最新上榜日期'
+    '序号', '代码', '名称', '最近上榜日', '收盘价', '涨跌幅',
+    '上榜次数', '龙虎榜净买额', '龙虎榜买入额', '龙虎榜卖出额',
+    '龙虎榜总成交额', '买方机构次数', '卖方机构次数',
+    '机构买入净额', '机构买入总额', '机构卖出总额',
+    '近1个月涨跌幅', '近3个月涨跌幅', '近6个月涨跌幅', '近1年涨跌幅'
   ];
 
   const rows = allData.map((item: any, index: number) => [
-    index + 1,
+    String(index + 1),
     item.SECURITY_CODE,
     item.SECURITY_NAME_ABBR,
-    item.BILLBOARD_NUMS,
-    item.BILLBOARD_NET_AMT,
-    item.BILLBOARD_BUY_AMT,
-    item.BILLBOARD_SELL_AMT,
-    item.BILLBOARD_DEAL_AMT,
-    item.ORG_NET_AMT,
-    item.ORG_SELL_AMT,
-    item.ORG_BUY_AMT,
-    item.ORG_SELL_AMT2,
-    item.D1_CLOSE_ADJCHRATE,
-    item.D2_CLOSE_ADJCHRATE,
-    item.D5_CLOSE_ADJCHRATE,
-    item.D10_CLOSE_ADJCHRATE,
-    item.LATEST_DATE ? new Date(item.LATEST_DATE).toISOString().split('T')[0] : null,
+    item.LATEST_TDATE ? new Date(item.LATEST_TDATE).toISOString().split('T')[0] : null,
+    item.CLOSE_PRICE != null ? String(item.CLOSE_PRICE) : null,
+    item.CHANGE_RATE != null ? String(item.CHANGE_RATE) : null,
+    item.BILLBOARD_TIMES != null ? String(item.BILLBOARD_TIMES) : null,
+    item.BILLBOARD_NET_AMT != null ? String(item.BILLBOARD_NET_AMT) : null,
+    item.BILLBOARD_BUY_AMT != null ? String(item.BILLBOARD_BUY_AMT) : null,
+    item.BILLBOARD_SELL_AMT != null ? String(item.BILLBOARD_SELL_AMT) : null,
+    item.BILLBOARD_DEAL_AMT != null ? String(item.BILLBOARD_DEAL_AMT) : null,
+    item.BUYER_ORG_NUM != null ? String(item.BUYER_ORG_NUM) : null,
+    item.SELLER_ORG_NUM != null ? String(item.SELLER_ORG_NUM) : null,
+    item.ORG_NET_AMT != null ? String(item.ORG_NET_AMT) : null,
+    item.ORG_BUY_AMT != null ? String(item.ORG_BUY_AMT) : null,
+    item.ORG_SELL_AMT != null ? String(item.ORG_SELL_AMT) : null,
+    item.CHANGE_RATE_1MONTH != null ? String(item.CHANGE_RATE_1MONTH) : null,
+    item.CHANGE_RATE_3MONTH != null ? String(item.CHANGE_RATE_3MONTH) : null,
+    item.CHANGE_RATE_6MONTH != null ? String(item.CHANGE_RATE_6MONTH) : null,
+    item.CHANGE_RATE_1YEAR != null ? String(item.CHANGE_RATE_1YEAR) : null,
   ]);
 
   return createDataFrame(columns, rows);

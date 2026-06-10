@@ -61,8 +61,8 @@ export async function stock_sector_spot(
     const jsonData = JSON.parse(text.substring(jsonStart));
 
     const columns = [
-      '板块', '公司家数', '平均价格', '涨跌额', '涨跌幅',
-      '总成交量', '总成交额', '股票代码', '股票名称',
+      'label', '板块', '公司家数', '平均价格', '涨跌额', '涨跌幅',
+      '总成交量', '总成交额', '股票代码', '个股-涨跌幅', '个股-当前价', '个股-涨跌额', '股票名称',
     ];
 
     const rows: any[][] = [];
@@ -71,6 +71,7 @@ export async function stock_sector_spot(
       const parts = (value as string).split(',');
       if (parts.length >= 13) {
         rows.push([
+          key,                               // label
           parts[1],                          // 板块
           parseInt(parts[2]) || NaN,         // 公司家数
           parseFloat(parts[3]) || NaN,       // 平均价格
@@ -79,6 +80,9 @@ export async function stock_sector_spot(
           parseFloat(parts[6]) || NaN,       // 总成交量
           parseFloat(parts[7]) || NaN,       // 总成交额
           parts[8],                          // 股票代码
+          parseFloat(parts[9]) || NaN,       // 个股-涨跌幅
+          parseFloat(parts[10]) || NaN,      // 个股-当前价
+          parseFloat(parts[11]) || NaN,      // 个股-涨跌额
           parts[12],                         // 股票名称
         ]);
       }
@@ -100,54 +104,71 @@ export async function stock_sector_spot(
  */
 export async function stock_sector_detail(
   sector: string = 'hangye_ZC27',
-  page: number = 1,
-  pageSize: number = 80
 ): Promise<DataFrame> {
-  const url =
-    'http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData';
-  const params = {
-    page: page.toString(),
-    num: pageSize.toString(),
-    sort: 'symbol',
-    asc: '1',
-    node: sector,
-    symbol: '',
-    _s_r_a: 'page',
-  };
-
   try {
-    const text = await httpGetText(url, { params });
-    const data = JSON.parse(text);
+    // First get total count
+    const countUrl = 'http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeStockCount';
+    const countText = await httpGetText(countUrl, { params: { node: sector } });
+    const totalCount = parseInt(countText.replace(/[^\d]/g, '')) || 0;
+    const totalPages = Math.ceil(totalCount / 80);
 
-    if (!Array.isArray(data) || data.length === 0) {
+    const allData: any[] = [];
+    const dataUrl = 'http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData';
+
+    for (let page = 1; page <= totalPages; page++) {
+      const params = {
+        page: page.toString(),
+        num: '80',
+        sort: 'symbol',
+        asc: '1',
+        node: sector,
+        symbol: '',
+        _s_r_a: 'page',
+      };
+
+      try {
+        const text = await httpGetText(dataUrl, { params });
+        const data = JSON.parse(text);
+        if (Array.isArray(data)) {
+          allData.push(...data);
+        }
+      } catch {
+        // Skip failed pages
+      }
+    }
+
+    if (allData.length === 0) {
       return createDataFrame([], []);
     }
 
+    // Python returns raw field names, not Chinese names
     const columns = [
-      '代码', '名称', '最新价', '涨跌额', '涨跌幅',
-      '买入', '卖出', '昨收', '今开', '最高', '最低',
-      '成交量', '成交额', '市盈率', '市净率', '总市值', '流通市值', '换手率',
+      'symbol', 'code', 'name', 'trade', 'pricechange', 'changepercent',
+      'buy', 'sell', 'settlement', 'open', 'high', 'low',
+      'volume', 'amount', 'ticktime', 'per', 'pb', 'mktcap', 'nmc', 'turnoverratio',
     ];
 
-    const rows = data.map((item: any) => [
-      item.symbol,
-      item.name,
-      parseFloat(item.trade) || NaN,
-      parseFloat(item.pricechange) || NaN,
-      parseFloat(item.changepercent) || NaN,
-      parseFloat(item.buy) || NaN,
-      parseFloat(item.sell) || NaN,
-      parseFloat(item.settlement) || NaN,
-      parseFloat(item.open) || NaN,
-      parseFloat(item.high) || NaN,
-      parseFloat(item.low) || NaN,
-      parseInt(item.volume) || NaN,
-      parseFloat(item.amount) || NaN,
-      parseFloat(item.per) || NaN,
-      parseFloat(item.pb) || NaN,
-      parseFloat(item.mktcap) || NaN,
-      parseFloat(item.nmc) || NaN,
-      parseFloat(item.turnoverratio) || NaN,
+    const rows = allData.map((item: any) => [
+      String(item.symbol ?? ''),
+      String(item.code ?? ''),
+      String(item.name ?? ''),
+      String(item.trade ?? ''),
+      String(item.pricechange ?? ''),
+      String(item.changepercent ?? ''),
+      String(item.buy ?? ''),
+      String(item.sell ?? ''),
+      String(item.settlement ?? ''),
+      String(item.open ?? ''),
+      String(item.high ?? ''),
+      String(item.low ?? ''),
+      String(item.volume ?? ''),
+      String(item.amount ?? ''),
+      String(item.ticktime ?? ''),
+      String(item.per ?? ''),
+      String(item.pb ?? ''),
+      String(item.mktcap ?? ''),
+      String(item.nmc ?? ''),
+      String(item.turnoverratio ?? ''),
     ]);
 
     return createDataFrame(columns, rows);

@@ -473,16 +473,16 @@ export async function option_sse_greeks_sina(symbol: string = '10003045'): Promi
 export async function option_sse_minute_sina(symbol: string = '10003720'): Promise<DataFrame> {
   const url = 'https://stock.finance.sina.com.cn/futures/api/openapi.php/StockOptionDaylineService.getOptionMinline';
   const params = { symbol: `CON_OP_${symbol}` };
+  const columns = ['日期', '时间', '价格', '成交', '持仓', '均价'];
 
   try {
     const data = await httpGet<any>(url, { params });
     const tempData = data?.result?.data;
 
     if (!tempData || tempData.length === 0) {
-      return createDataFrame([], []);
+      return createDataFrame(columns, []);
     }
 
-    const columns = ['日期', '时间', '价格', '成交', '持仓', '均价'];
     const rows: any[][] = [];
     let lastDate = '';
 
@@ -493,16 +493,16 @@ export async function option_sse_minute_sina(symbol: string = '10003720'): Promi
       rows.push([
         date,
         item[0],
-        parseFloat(item[1]) || null,
-        parseInt(item[2]) || null,
-        parseInt(item[3]) || null,
-        parseFloat(item[4]) || null,
+        item[1] || '',
+        item[2] || '',
+        item[3] || '',
+        item[4] || '',
       ]);
     }
 
     return createDataFrame(columns, rows);
   } catch {
-    return createDataFrame([], []);
+    return createDataFrame(columns, []);
   }
 }
 

@@ -10,6 +10,44 @@ import {
   DataFrame,
 } from '../utils/dataframe';
 
+function parseLooseObject(text: string): any {
+  const start = text.indexOf('{');
+  if (start === -1) {
+    return null;
+  }
+  const body = text.slice(start).replace(/;\s*$/, '');
+  try {
+    return JSON.parse(body);
+  } catch {
+    const fn = new Function(`return (${body});`);
+    return fn();
+  }
+}
+
+function toPandasNumericString(value: any): string {
+  const raw = String(value ?? '').trim();
+  if (!raw) {
+    return '';
+  }
+  const num = Number(raw.replace(/,/g, ''));
+  if (!Number.isFinite(num)) {
+    return '';
+  }
+  return Number.isInteger(num) ? num.toFixed(1) : num.toString();
+}
+
+function toPandasIntegerString(value: any): string {
+  const raw = String(value ?? '').trim();
+  if (!raw) {
+    return '';
+  }
+  const num = Number(raw.replace(/,/g, ''));
+  if (!Number.isFinite(num)) {
+    return '';
+  }
+  return Math.trunc(num).toString();
+}
+
 /**
  * 获取基金规模变动数据 - 东方财富
  * https://fund.eastmoney.com/data/gmbdlist.html
@@ -29,13 +67,10 @@ export async function fund_scale_change_em(): Promise<DataFrame> {
     };
 
     const text = await httpGetText(url, { params });
-    const jsonStart = text.indexOf('{');
-    const jsonEnd = text.lastIndexOf('}');
-    if (jsonStart === -1 || jsonEnd === -1) {
+    const firstData = parseLooseObject(text);
+    if (!firstData) {
       return createDataFrame([], []);
     }
-
-    const firstData = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
     const totalPages = parseInt(firstData.pages) || 1;
     const allData: any[][] = [...(firstData.data || [])];
 
@@ -43,13 +78,9 @@ export async function fund_scale_change_em(): Promise<DataFrame> {
     for (let page = 2; page <= totalPages; page++) {
       const pageParams = { ...params, pi: String(page) };
       const pageText = await httpGetText(url, { params: pageParams });
-      const pJsonStart = pageText.indexOf('{');
-      const pJsonEnd = pageText.lastIndexOf('}');
-      if (pJsonStart !== -1 && pJsonEnd !== -1) {
-        const pageData = JSON.parse(pageText.slice(pJsonStart, pJsonEnd + 1));
-        if (pageData.data) {
-          allData.push(...pageData.data);
-        }
+      const pageData = parseLooseObject(pageText);
+      if (pageData?.data) {
+        allData.push(...pageData.data);
       }
     }
 
@@ -59,12 +90,12 @@ export async function fund_scale_change_em(): Promise<DataFrame> {
 
     const rows = allData.map((item: any, index: number) => [
       index + 1,
-      item.reportdate || '',
-      parseInt(item.jjjs) || null,
-      parseFloat(String(item.qisg || '').replace(/,/g, '')) || null,
-      parseFloat(String(item.qish || '').replace(/,/g, '')) || null,
-      parseFloat(String(item.qmzfe || '').replace(/,/g, '')) || null,
-      parseFloat(String(item.qmjze || '').replace(/,/g, '')) || null,
+      item[0] || '',
+      item[1] || '',
+      item[2] || '',
+      item[3] || '',
+      item[4] || '',
+      item[5] || '',
     ]);
 
     return createDataFrame(columns, rows);
@@ -91,26 +122,19 @@ export async function fund_hold_structure_em(): Promise<DataFrame> {
     };
 
     const text = await httpGetText(url, { params });
-    const jsonStart = text.indexOf('{');
-    const jsonEnd = text.lastIndexOf('}');
-    if (jsonStart === -1 || jsonEnd === -1) {
+    const firstData = parseLooseObject(text);
+    if (!firstData) {
       return createDataFrame([], []);
     }
-
-    const firstData = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
     const totalPages = parseInt(firstData.pages) || 1;
     const allData: any[][] = [...(firstData.data || [])];
 
     for (let page = 2; page <= totalPages; page++) {
       const pageParams = { ...params, pi: String(page) };
       const pageText = await httpGetText(url, { params: pageParams });
-      const pJsonStart = pageText.indexOf('{');
-      const pJsonEnd = pageText.lastIndexOf('}');
-      if (pJsonStart !== -1 && pJsonEnd !== -1) {
-        const pageData = JSON.parse(pageText.slice(pJsonStart, pJsonEnd + 1));
-        if (pageData.data) {
-          allData.push(...pageData.data);
-        }
+      const pageData = parseLooseObject(pageText);
+      if (pageData?.data) {
+        allData.push(...pageData.data);
       }
     }
 
@@ -118,15 +142,18 @@ export async function fund_hold_structure_em(): Promise<DataFrame> {
       '序号', '截止日期', '基金家数', '机构持有比列', '个人持有比列', '内部持有比列', '总份额',
     ];
 
-    const rows = allData.map((item: any, index: number) => [
-      index + 1,
-      item.reportdate || '',
-      parseInt(item.jjjs) || null,
-      parseFloat(item.jjcyrbl) || null,
-      parseFloat(item.grcyrbl) || null,
-      parseFloat(item.nbcyrbl) || null,
-      parseFloat(String(item.zfe || '').replace(/,/g, '')) || null,
-    ]);
+    const rows = allData.map((item: any, index: number) => {
+      const row = Array.isArray(item) ? item : [];
+      return [
+        index + 1,
+        row[0] || '',
+        toPandasIntegerString(row[1]),
+        toPandasNumericString(row[2]),
+        toPandasNumericString(row[3]),
+        toPandasNumericString(row[4]),
+        toPandasNumericString(row[5]),
+      ];
+    });
 
     return createDataFrame(columns, rows);
   } catch (error) {

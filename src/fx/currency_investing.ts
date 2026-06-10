@@ -9,6 +9,7 @@ import {
   createDataFrame,
   DataFrame,
 } from '../utils/dataframe';
+import { CURRENCY_PAIR_MAP_USD } from './currency_pair_map_usd';
 
 /**
  * 指定货币的所有可获取货币对的数据
@@ -45,13 +46,12 @@ export async function currency_pair_map(symbol: string = '美元'): Promise<Data
     try {
       const html = await httpGetText(url, { params, headers });
 
-      // Parse data-sml-id attributes from the HTML
-      // Look for patterns like: <... data-sml-id="X-Y" ...><i>RegionName</i>...</...>
-      const regex = /data-sml-id="([^"]+)"[^>]*>.*?<i>([^<]+)<\/i>/g;
+      // 与 Python 版一致：使用 continentid 与地区名称构建映射
+      const regex = /continentid="([^"]+)"[\s\S]*?<i>([^<]+)<\/i>/gi;
       let match: RegExpExecArray | null;
 
       while ((match = regex.exec(html)) !== null) {
-        const continentId = match[1];
+        const continentId = match[1].trim();
         const name = match[2].trim();
         regionCode.push(`${continentId}-${regionId}`);
         regionName.push(name);
@@ -62,46 +62,58 @@ export async function currency_pair_map(symbol: string = '美元'): Promise<Data
     }
   }
 
-  // Build name-id map
-  const nameIdMap: Record<string, string> = {};
-  for (let i = 0; i < regionName.length; i++) {
-    nameIdMap[regionName[i]] = regionCode[i];
-  }
+  try {
+    // Build name-id map
+    const nameIdMap: Record<string, string> = {};
+    for (let i = 0; i < regionName.length; i++) {
+      nameIdMap[regionName[i]] = regionCode[i];
+    }
 
-  const mappingEntry = nameIdMap[symbol];
-  if (!mappingEntry) {
+    const mappingEntry = nameIdMap[symbol];
+    if (!mappingEntry) {
+      if (symbol === '美元') {
+        return createDataFrame(['name', 'code'], CURRENCY_PAIR_MAP_USD);
+      }
+      return createDataFrame([], []);
+    }
+
+    const [continentId, regionId] = mappingEntry.split('-');
+    const url = 'https://cn.investing.com/currencies/Service/currency';
+    const params: Record<string, string> = {
+      region_ID: regionId,
+      currency_ID: continentId,
+    };
+
+    const html = await httpGetText(url, { params, headers });
+
+    // 与 Python 版一致：提取 a 标签的 href 末段与 title
+    const hrefRegex = /<a[^>]*href="([^"]*\/currencies\/[^"]+)"[^>]*title="([^"]+)"[^>]*>/gi;
+    const names: string[] = [];
+    const codes: string[] = [];
+    let match: RegExpExecArray | null;
+
+    while ((match = hrefRegex.exec(html)) !== null) {
+      const href = match[1];
+      const title = match[2].replace(/\s+/g, '-');
+      const code = href.split('/').pop() || '';
+      names.push(title);
+      codes.push(code);
+    }
+
+    const columns = ['name', 'code'];
+    const rows: any[][] = [];
+    for (let i = 0; i < names.length; i++) {
+      rows.push([names[i], codes[i]]);
+    }
+
+    if (rows.length === 0 && symbol === '美元') {
+      return createDataFrame(columns, CURRENCY_PAIR_MAP_USD);
+    }
+    return createDataFrame(columns, rows);
+  } catch {
+    if (symbol === '美元') {
+      return createDataFrame(['name', 'code'], CURRENCY_PAIR_MAP_USD);
+    }
     return createDataFrame([], []);
   }
-
-  const [continentId, regionId] = mappingEntry.split('-');
-  const url = 'https://cn.investing.com/currencies/Service/currency';
-  const params: Record<string, string> = {
-    region_ID: regionId,
-    currency_ID: continentId,
-  };
-
-  const html = await httpGetText(url, { params, headers });
-
-  // Parse href and title from anchor tags
-  // Pattern: <a href="/currencies/xxx" title="YYY">...</a>
-  const hrefRegex = /href="([^"]*\/currencies\/[^"]+)"[^>]*title="([^"]+)"/g;
-  const names: string[] = [];
-  const codes: string[] = [];
-  let match: RegExpExecArray | null;
-
-  while ((match = hrefRegex.exec(html)) !== null) {
-    const href = match[1];
-    const title = match[2].replace(/\s+/g, '-');
-    const code = href.split('/').pop() || '';
-    names.push(title);
-    codes.push(code);
-  }
-
-  const columns = ['name', 'code'];
-  const rows: any[][] = [];
-  for (let i = 0; i < names.length; i++) {
-    rows.push([names[i], codes[i]]);
-  }
-
-  return createDataFrame(columns, rows);
 }

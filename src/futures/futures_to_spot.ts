@@ -8,6 +8,14 @@ import {
   DataFrame,
 } from '../utils/dataframe';
 
+function parseXlsBuffer(buffer: Buffer): string[][] {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const XLSX = require('xlsx');
+  const wb = XLSX.read(buffer, { type: 'buffer' });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  return XLSX.utils.sheet_to_json(ws, { header: 1 }) as string[][];
+}
+
 /**
  * 上海期货交易所-期转现
  * @param date 年月，格式 YYYYMM，如 "202312"
@@ -216,49 +224,26 @@ export async function futures_to_spot_czce(date: string = '20231228'): Promise<D
   const url = `http://www.czce.com.cn/cn/DFSStaticFiles/Future/${year}/${date}/FutureDataTrdtrades.xls`;
 
   try {
-    const response = await httpGet<string>(url, {
-      responseType: 'text',
+    const buffer = await httpGet<any>(url, {
+      responseType: 'arraybuffer',
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       },
     });
 
-    if (!response || typeof response !== 'string') {
-      return createDataFrame([], []);
-    }
+    const allRows = parseXlsBuffer(Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer));
 
-    // Try to parse as HTML table (fallback when XLS is not available)
-    const tableMatch = response.match(/<table[^>]*>([\s\S]*?)<\/table>/i);
-    if (!tableMatch) {
-      return createDataFrame([], []);
-    }
-
-    const tableHtml = tableMatch[1];
-    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-    const allRows: string[][] = [];
-    let rowMatch;
-
-    while ((rowMatch = rowRegex.exec(tableHtml)) !== null) {
-      const cellRegex = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
-      const cells: string[] = [];
-      let cellMatch;
-      while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
-        cells.push(cellMatch[1].replace(/<[^>]*>/g, '').trim());
-      }
-      if (cells.length > 0) allRows.push(cells);
-    }
-
-    if (allRows.length < 2) {
+    if (allRows.length < 3) {
       return createDataFrame([], []);
     }
 
     const columns = ['合约代码', '合约数量'];
-    const rows = allRows.slice(1).filter(row => {
-      const contractCode = row[0] || '';
-      return !contractCode.includes('小计') && !contractCode.includes('合计') && contractCode !== '';
+    const rows = allRows.slice(2).filter(row => {
+      const contractCode = String(row[0] || '').trim();
+      return contractCode && !contractCode.includes('合计');
     }).map(row => [
-      row[0] || '',
-      parseFloat((row[1] || '').replace(/,/g, '')) || 0,
+      String(row[0] || '').trim(),
+      String(row[1] || '').replace(/,/g, ''),
     ]);
 
     return createDataFrame(columns, rows);
@@ -340,57 +325,42 @@ export async function futures_delivery_match_czce(date: string = '20210106'): Pr
   const url = `http://www.czce.com.cn/cn/DFSStaticFiles/Future/${year}/${date}/FutureDataDelsettle.xls`;
 
   try {
-    const response = await httpGet<string>(url, {
-      responseType: 'text',
+    const buffer = await httpGet<any>(url, {
+      responseType: 'arraybuffer',
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       },
     });
 
-    if (!response || typeof response !== 'string') {
+    const allRows = parseXlsBuffer(Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer));
+
+    if (allRows.length < 3) {
       return createDataFrame([], []);
     }
 
-    // Try to parse as HTML table (fallback when XLS is not available)
-    const tableMatch = response.match(/<table[^>]*>([\s\S]*?)<\/table>/i);
-    if (!tableMatch) {
-      return createDataFrame([], []);
-    }
-
-    const tableHtml = tableMatch[1];
-    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-    const allRows: string[][] = [];
-    let rowMatch;
-
-    while ((rowMatch = rowRegex.exec(tableHtml)) !== null) {
-      const cellRegex = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
-      const cells: string[] = [];
-      let cellMatch;
-      while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
-        cells.push(cellMatch[1].replace(/<[^>]*>/g, '').trim());
-      }
-      if (cells.length > 0) allRows.push(cells);
-    }
-
-    if (allRows.length < 2) {
-      return createDataFrame([], []);
-    }
+    // Row 0: title, Row 1: date and contract info, Row 2: column headers
+    const infoRow = String(allRows[1]?.[0] || '');
+    const dateMatch = infoRow.match(/配对日期[：:]\s*(\S+)/);
+    const contractMatch = infoRow.match(/合约代码[：:]\s*(\S+)/);
+    const pairDate = dateMatch ? dateMatch[1] : date;
+    const contractCode = contractMatch ? contractMatch[1] : '';
 
     const columns = [
       '卖方会员', '卖方会员-会员简称', '买方会员', '买方会员-会员简称',
       '交割量', '配对日期', '合约代码',
     ];
 
-    const rows = allRows.slice(1).filter(row => {
-      return row.length >= 5 && !row[0].includes('合计');
+    const rows = allRows.slice(3).filter(row => {
+      const first = String(row[0] || '').trim();
+      return first && !first.includes('合计');
     }).map(row => [
-      row[0] || '',
-      row[1] || '',
-      row[2] || '',
-      row[3] || '',
-      parseFloat((row[4] || '').replace(/,/g, '')) || 0,
-      row[5] || '',
-      row[6] || '',
+      String(row[0] || '').trim(),
+      String(row[1] || '').trim(),
+      String(row[2] || '').trim(),
+      String(row[3] || '').trim(),
+      String(row[4] || '').replace(/,/g, ''),
+      pairDate,
+      contractCode,
     ]);
 
     return createDataFrame(columns, rows);
@@ -410,47 +380,25 @@ export async function futures_delivery_czce(date: string = '20210112'): Promise<
   const url = `http://www.czce.com.cn/cn/DFSStaticFiles/Future/${year}/${date}/FutureDataSettlematched.xls`;
 
   try {
-    const response = await httpGet<string>(url, {
-      responseType: 'text',
+    const buffer = await httpGet<any>(url, {
+      responseType: 'arraybuffer',
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       },
     });
 
-    if (!response || typeof response !== 'string') {
+    const allRows = parseXlsBuffer(Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer));
+
+    if (allRows.length < 3) {
       return createDataFrame([], []);
     }
 
-    // Try to parse as HTML table (fallback when XLS is not available)
-    const tableMatch = response.match(/<table[^>]*>([\s\S]*?)<\/table>/i);
-    if (!tableMatch) {
-      return createDataFrame([], []);
-    }
-
-    const tableHtml = tableMatch[1];
-    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-    const allRows: string[][] = [];
-    let rowMatch;
-
-    while ((rowMatch = rowRegex.exec(tableHtml)) !== null) {
-      const cellRegex = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
-      const cells: string[] = [];
-      let cellMatch;
-      while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
-        cells.push(cellMatch[1].replace(/<[^>]*>/g, '').trim());
-      }
-      if (cells.length > 0) allRows.push(cells);
-    }
-
-    if (allRows.length < 2) {
-      return createDataFrame([], []);
-    }
-
+    // Skip header row (row 0 is title, row 1 is column headers)
     const columns = ['品种', '交割数量', '交割额'];
-    const rows = allRows.slice(1).map(row => [
-      row[0] || '',
-      parseFloat((row[1] || '').replace(/,/g, '')) || 0,
-      parseFloat((row[2] || '').replace(/,/g, '')) || 0,
+    const rows = allRows.slice(2).filter(row => row[0] && String(row[0]).trim()).map(row => [
+      String(row[0] || '').trim(),
+      String(row[1] || '').replace(/,/g, ''),
+      String(row[2] || '').replace(/,/g, ''),
     ]);
 
     return createDataFrame(columns, rows);

@@ -11,47 +11,85 @@ import {
 /**
  * 获取期货库存数据 - 东方财富
  *
- * @param exchange 交易所：SHFE 上期所, DCE 大商所, CZCE 郑商所
- * @param symbol 品种代码，如 "铜"
+ * @param symbol 品种代码或中文名称，默认 "a"
  */
 export async function futures_inventory_em(
-  exchange: 'SHFE' | 'DCE' | 'CZCE' = 'SHFE',
-  symbol?: string
+  symbol: string = 'a'
 ): Promise<DataFrame> {
   const url = 'https://datacenter-web.eastmoney.com/api/data/v1/get';
-  const params = {
-    reportName: 'RPT_FUTU_INVENTORY',
-    columns: 'ALL',
-    filter: symbol
-      ? `(EXCHANGE='${exchange}')(VARIETY='${symbol}')`
-      : `(EXCHANGE='${exchange}')`,
+
+  const codeParams = {
+    reportName: 'RPT_FUTU_POSITIONCODE',
+    columns: 'TRADE_MARKET_CODE,TRADE_CODE,TRADE_TYPE',
+    filter: '(IS_MAINCODE="1")',
     pageNumber: '1',
-    pageSize: '10000',
+    pageSize: '500',
+    source: 'WEB',
+    client: 'WEB',
+  };
+  const codeData = await httpGet<any>(url, { params: codeParams });
+  const codeRows = codeData?.result?.data;
+
+  if (!Array.isArray(codeRows) || codeRows.length === 0) {
+    return createDataFrame([], []);
+  }
+
+  const symbolDict: Record<string, string> = {};
+  for (const item of codeRows) {
+    const tradeType = String(item?.TRADE_TYPE ?? '').trim();
+    const tradeCode = String(item?.TRADE_CODE ?? '').trim();
+    if (tradeType && tradeCode) {
+      symbolDict[tradeType] = tradeCode;
+    }
+  }
+
+  let productId = '';
+  const normalizedSymbol = symbol.trim();
+  const upperSymbol = normalizedSymbol.toUpperCase();
+
+  if (symbolDict[normalizedSymbol]) {
+    productId = symbolDict[normalizedSymbol];
+  } else if (symbolDict[upperSymbol]) {
+    productId = symbolDict[upperSymbol];
+  } else if (Object.values(symbolDict).includes(upperSymbol)) {
+    productId = upperSymbol;
+  } else if (Object.values(symbolDict).includes(normalizedSymbol)) {
+    productId = normalizedSymbol;
+  } else if (Object.values(symbolDict).includes(symbol)) {
+    productId = symbol;
+  } else {
+    return createDataFrame([], []);
+  }
+
+  const params = {
+    reportName: 'RPT_FUTU_STOCKDATA',
+    columns: 'SECURITY_CODE,TRADE_DATE,ON_WARRANT_NUM,ADDCHANGE',
+    filter: `(SECURITY_CODE="${productId}")(TRADE_DATE>='2020-10-28')`,
+    pageNumber: '1',
+    pageSize: '500',
     sortTypes: '-1',
     sortColumns: 'TRADE_DATE',
     source: 'WEB',
     client: 'WEB',
-    _: Date.now(),
   };
-
   const data = await httpGet<any>(url, { params });
 
   if (!data?.result?.data) {
     return createDataFrame([], []);
   }
 
-  const columns = [
-    '日期', '交易所', '品种', '库存', '增减', '仓单'
-  ];
+  const columns = ['日期', '库存', '增减'];
+  const rows = data.result.data.map((item: any) => {
+    const tradeDate = String(item?.TRADE_DATE ?? '');
+    const normalizedDate = tradeDate.split(' ')[0] || tradeDate;
+    return [
+      normalizedDate,
+      item?.ON_WARRANT_NUM ?? '',
+      item?.ADDCHANGE ?? '',
+    ];
+  });
 
-  const rows = data.result.data.map((item: any) => [
-    item.TRADE_DATE,
-    item.EXCHANGE,
-    item.VARIETY,
-    item.INVENTORY,
-    item.CHANGE,
-    item.WARRANT,
-  ]);
+  rows.sort((a: any[], b: any[]) => String(a[0]).localeCompare(String(b[0])));
 
   return createDataFrame(columns, rows);
 }

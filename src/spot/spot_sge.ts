@@ -135,7 +135,7 @@ export async function spot_hist_sge(symbol: string = 'Au99.99'): Promise<DataFra
     return createDataFrame([], []);
   }
 
-  const columns = ['日期', '开盘价', '收盘价', '最低价', '最高价'];
+  const columns = ['date', 'open', 'close', 'low', 'high'];
   const rows = data.time.map((item: any[]) => [
     item[0],
     Number(item[1]),
@@ -177,7 +177,7 @@ export async function spot_golden_benchmark_sge(): Promise<DataFrame> {
     return createDataFrame([], []);
   }
 
-  const columns = ['交易时间', '早盘价', '晚盘价'];
+  const columns = ['交易时间', '晚盘价', '早盘价'];
   const rows: any[][] = [];
 
   // wp = 晚盘价, zp = 早盘价，以 wp 为基准对齐
@@ -185,7 +185,7 @@ export async function spot_golden_benchmark_sge(): Promise<DataFrame> {
     const tradeTime = new Date(data.wp[i][0]).toISOString().split('T')[0];
     const eveningPrice = Number(data.wp[i][1]);
     const morningPrice = data.zp[i] ? Number(data.zp[i][1]) : NaN;
-    rows.push([tradeTime, morningPrice, eveningPrice]);
+    rows.push([tradeTime, eveningPrice, morningPrice]);
   }
 
   return createDataFrame(columns, rows);
@@ -221,14 +221,14 @@ export async function spot_silver_benchmark_sge(): Promise<DataFrame> {
     return createDataFrame([], []);
   }
 
-  const columns = ['交易时间', '早盘价', '晚盘价'];
+  const columns = ['交易时间', '晚盘价', '早盘价'];
   const rows: any[][] = [];
 
   for (let i = 0; i < data.wp.length; i++) {
     const tradeTime = new Date(data.wp[i][0]).toISOString().split('T')[0];
     const eveningPrice = Number(data.wp[i][1]);
     const morningPrice = data.zp[i] ? Number(data.zp[i][1]) : NaN;
-    rows.push([tradeTime, morningPrice, eveningPrice]);
+    rows.push([tradeTime, eveningPrice, morningPrice]);
   }
 
   return createDataFrame(columns, rows);

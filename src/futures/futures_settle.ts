@@ -3,6 +3,7 @@
  * 支持: CFFEX中金所, CZCE郑商所, SHFE上期所, INE上能中心, GFEX广期所
  */
 
+import axios from 'axios';
 import { httpGet, httpGetText, httpPost } from '../utils/httpClient';
 import {
   createDataFrame,
@@ -21,17 +22,28 @@ export async function futures_settle_cffex(date: string = '20260119'): Promise<D
   const url = `http://www.cffex.com.cn/sj/jscs/${yearMonth}/${day}/${date}_1.csv`;
 
   try {
-    const response = await httpGetText(url, {
+    // CFFEX returns GBK-encoded CSV; fetch raw bytes and decode
+    const response = await axios.get(url, {
+      responseType: 'arraybuffer',
+      timeout: 30000,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       },
     });
 
-    if (!response || response.trim().startsWith('<')) {
+    const rawBuffer = Buffer.from(response.data as any);
+    let text = '';
+    try {
+      text = new TextDecoder('gbk').decode(rawBuffer);
+    } catch {
+      text = rawBuffer.toString('utf8');
+    }
+
+    if (!text || text.trim().startsWith('<')) {
       return createDataFrame([], []);
     }
 
-    const lines = response.split('\n').filter(line => line.trim());
+    const lines = text.split('\n').filter(line => line.trim());
     if (lines.length < 3) {
       return createDataFrame([], []);
     }
@@ -164,7 +176,7 @@ export async function futures_settle_shfe(date: string = '20260119'): Promise<Da
     ];
 
     const rows = data.o_cursor.map((item: any) => {
-      const symbol = item.SYMBOL || '';
+      const symbol = item.INSTRUMENTID || item.SYMBOL || '';
       const varietyMatch = symbol.match(/^([A-Za-z]+)/);
       return [
         date,
@@ -177,7 +189,7 @@ export async function futures_settle_shfe(date: string = '20260119'): Promise<Da
         item.HEDGSHORTMARGINRATIO || '',
         item.TRADEFEERATIO || '',
         item.TTRADEFEERATIO || '',
-        item.ISCLOSETODAY || '',
+        item.ISUNITODAY || item.ISCLOSETODAY || '',
       ];
     });
 
@@ -214,7 +226,7 @@ export async function futures_settle_ine(date: string = '20260119'): Promise<Dat
     ];
 
     const rows = data.o_cursor.map((item: any) => {
-      const symbol = item.SYMBOL || '';
+      const symbol = item.INSTRUMENTID || item.SYMBOL || '';
       const varietyMatch = symbol.match(/^([A-Za-z]+)/);
       return [
         date,
@@ -227,7 +239,7 @@ export async function futures_settle_ine(date: string = '20260119'): Promise<Dat
         item.HEDGSHORTMARGINRATIO || '',
         item.TRADEFEERATIO || '',
         item.TTRADEFEERATIO || '',
-        item.ISCLOSETODAY || '',
+        item.ISUNITODAY || item.ISCLOSETODAY || '',
       ];
     });
 

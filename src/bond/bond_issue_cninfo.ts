@@ -9,6 +9,7 @@ import {
   createDataFrame,
   DataFrame,
 } from '../utils/dataframe';
+import { get_cninfo_js } from '../data/datasets';
 
 /**
  * 默认请求头
@@ -28,6 +29,34 @@ const CNINFO_HEADERS = {
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.63 Safari/537.36',
   'X-Requested-With': 'XMLHttpRequest',
 };
+
+async function getCninfoEncKey(): Promise<string> {
+  try {
+    const jsCode = await get_cninfo_js();
+    if (!jsCode) return '';
+    const fn = new Function(
+      `${jsCode}; return (typeof getResCode1 === 'function' ? getResCode1() : '');`
+    );
+    const result = fn();
+    return String(result ?? '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function parseNullableNumber(value: any, isInt: boolean = false): number | null {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+  const parsed = isInt ? Number.parseInt(String(value), 10) : Number.parseFloat(String(value));
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function dateOnly(value: any): string {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  return raw.split(' ')[0];
+}
 
 /**
  * 格式化日期
@@ -50,6 +79,12 @@ export async function bond_treasure_issue_cninfo(
   const url = 'http://webapi.cninfo.com.cn/api/sysapi/p_sysapi1120';
 
   try {
+    const encKey = await getCninfoEncKey();
+    const headers: Record<string, string> = { ...CNINFO_HEADERS };
+    if (encKey) {
+      headers['Accept-Enckey'] = encKey;
+    }
+
     const params = {
       sdate: formatDate(startDate),
       edate: formatDate(endDate),
@@ -57,10 +92,10 @@ export async function bond_treasure_issue_cninfo(
 
     const data = await httpPost<any>(url, null, {
       params,
-      headers: CNINFO_HEADERS,
+      headers,
     });
 
-    if (!data?.records) {
+    if (!Array.isArray(data?.records) || data.records.length === 0) {
       return createDataFrame([], []);
     }
 
@@ -74,18 +109,18 @@ export async function bond_treasure_issue_cninfo(
     const rows = data.records.map((item: any) => [
       item.SECCODE,
       item.SECNAME,
-      item.F004D,
-      item.F003D,
-      parseFloat(item.F006N) || null,
-      parseFloat(item.F005N) || null,
-      parseFloat(item.F007N) || null,
-      parseFloat(item.F008N) || null,
-      item.F009D,
-      parseInt(item.F028N) || null,
+      dateOnly(item.F004D),
+      dateOnly(item.F003D),
+      parseNullableNumber(item.F006N),
+      parseNullableNumber(item.F005N),
+      parseNullableNumber(item.F007N),
+      parseNullableNumber(item.F008N),
+      dateOnly(item.F009D),
+      parseNullableNumber(item.F028N, true),
       item.F002V,
       item.F013V,
       item.F014V,
-      item.DECLAREDATE,
+      dateOnly(item.DECLAREDATE),
       item.BONDNAME,
     ]);
 
@@ -109,6 +144,12 @@ export async function bond_local_government_issue_cninfo(
   const url = 'http://webapi.cninfo.com.cn/api/sysapi/p_sysapi1121';
 
   try {
+    const encKey = await getCninfoEncKey();
+    const headers: Record<string, string> = { ...CNINFO_HEADERS };
+    if (encKey) {
+      headers['Accept-Enckey'] = encKey;
+    }
+
     const params = {
       sdate: formatDate(startDate),
       edate: formatDate(endDate),
@@ -116,10 +157,10 @@ export async function bond_local_government_issue_cninfo(
 
     const data = await httpPost<any>(url, null, {
       params,
-      headers: CNINFO_HEADERS,
+      headers,
     });
 
-    if (!data?.records) {
+    if (!Array.isArray(data?.records) || data.records.length === 0) {
       return createDataFrame([], []);
     }
 
@@ -133,18 +174,18 @@ export async function bond_local_government_issue_cninfo(
     const rows = data.records.map((item: any) => [
       item.SECCODE,
       item.SECNAME,
-      item.F004D,
-      item.F003D,
-      parseFloat(item.F006N) || null,
-      parseFloat(item.F005N) || null,
-      parseFloat(item.F007N) || null,
-      parseFloat(item.F008N) || null,
-      item.F009D,
-      parseInt(item.F028N) || null,
+      dateOnly(item.F004D),
+      dateOnly(item.F003D),
+      parseNullableNumber(item.F006N),
+      parseNullableNumber(item.F005N),
+      parseNullableNumber(item.F007N),
+      parseNullableNumber(item.F008N),
+      dateOnly(item.F009D),
+      parseNullableNumber(item.F028N, true),
       item.F002V,
       item.F013V,
       item.F014V,
-      item.DECLAREDATE,
+      dateOnly(item.DECLAREDATE),
       item.BONDNAME,
     ]);
 
@@ -168,6 +209,12 @@ export async function bond_corporate_issue_cninfo(
   const url = 'http://webapi.cninfo.com.cn/api/sysapi/p_sysapi1122';
 
   try {
+    const encKey = await getCninfoEncKey();
+    const headers: Record<string, string> = { ...CNINFO_HEADERS };
+    if (encKey) {
+      headers['Accept-Enckey'] = encKey;
+    }
+
     const params = {
       sdate: formatDate(startDate),
       edate: formatDate(endDate),
@@ -175,10 +222,10 @@ export async function bond_corporate_issue_cninfo(
 
     const data = await httpPost<any>(url, null, {
       params,
-      headers: CNINFO_HEADERS,
+      headers,
     });
 
-    if (!data?.records) {
+    if (!Array.isArray(data?.records) || data.records.length === 0) {
       return createDataFrame([], []);
     }
 
@@ -193,20 +240,20 @@ export async function bond_corporate_issue_cninfo(
     const rows = data.records.map((item: any) => [
       item.SECCODE,
       item.SECNAME,
-      item.DECLAREDATE,
-      item.F003D,
-      item.F004D,
-      parseFloat(item.F005N) || null,
-      parseFloat(item.F006N) || null,
-      parseFloat(item.F008N) || null,
-      parseFloat(item.F007N) || null,
+      dateOnly(item.DECLAREDATE),
+      dateOnly(item.F003D),
+      dateOnly(item.F004D),
+      parseNullableNumber(item.F005N),
+      parseNullableNumber(item.F006N),
+      parseNullableNumber(item.F008N),
+      parseNullableNumber(item.F007N),
       item.F013V,
       item.F014V,
       item.F015V,
       item.F017V,
-      parseInt(item.F022N) || null,
+      parseNullableNumber(item.F022N, true),
       item.F023V,
-      parseFloat(item.F052N) || null,
+      parseNullableNumber(item.F052N),
       item.BONDNAME,
     ]);
 
@@ -230,6 +277,12 @@ export async function bond_cov_issue_cninfo(
   const url = 'http://webapi.cninfo.com.cn/api/sysapi/p_sysapi1123';
 
   try {
+    const encKey = await getCninfoEncKey();
+    const headers: Record<string, string> = { ...CNINFO_HEADERS };
+    if (encKey) {
+      headers['Accept-Enckey'] = encKey;
+    }
+
     const params = {
       sdate: formatDate(startDate),
       edate: formatDate(endDate),
@@ -237,10 +290,10 @@ export async function bond_cov_issue_cninfo(
 
     const data = await httpPost<any>(url, null, {
       params,
-      headers: CNINFO_HEADERS,
+      headers,
     });
 
-    if (!data?.records) {
+    if (!Array.isArray(data?.records) || data.records.length === 0) {
       return createDataFrame([], []);
     }
 
@@ -258,32 +311,32 @@ export async function bond_cov_issue_cninfo(
     const rows = data.records.map((item: any) => [
       item.SECCODE,
       item.SECNAME,
-      item.DECLAREDATE,
-      item.F029D,
-      item.F003D,
-      parseFloat(item.F005N) || null,
-      parseFloat(item.F006N) || null,
-      parseFloat(item.F007N) || null,
-      parseFloat(item.F052N) || null,
+      dateOnly(item.DECLAREDATE),
+      dateOnly(item.F029D),
+      dateOnly(item.F003D),
+      parseNullableNumber(item.F005N),
+      parseNullableNumber(item.F006N),
+      parseNullableNumber(item.F007N),
+      parseNullableNumber(item.F052N),
       item.F013V,
       item.F014V,
       item.F015V,
       item.F017V,
       item.F021V,
-      parseFloat(item.F026N) || null,
-      item.F027D,
-      item.F053D,
-      item.F051D,
+      parseNullableNumber(item.F026N),
+      dateOnly(item.F027D),
+      dateOnly(item.F053D),
+      dateOnly(item.F051D),
       item.F031V,
       item.F032V,
-      parseInt(item.F008N) || null,
-      parseInt(item.F066N) || null,
-      parseInt(item.F067N) || null,
-      item.F068D,
-      item.F004D,
-      parseFloat(item.F065N) || null,
-      item.F028D,
-      item.F054D,
+      parseNullableNumber(item.F008N, true),
+      parseNullableNumber(item.F066N, true),
+      parseNullableNumber(item.F067N, true),
+      dateOnly(item.F068D),
+      dateOnly(item.F004D),
+      parseNullableNumber(item.F065N),
+      dateOnly(item.F028D),
+      dateOnly(item.F054D),
       item.F086V,
       item.F002V,
       item.BONDNAME,

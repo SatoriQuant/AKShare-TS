@@ -30,7 +30,7 @@ export async function bond_info_cm_query(
         return createDataFrame([], []);
       }
 
-      const columns = ['名称', '代码'];
+      const columns = ['name', 'code'];
       const rows = data.data.enty.map((item: any) => [item.name, item.code]);
 
       return createDataFrame(columns, rows);
@@ -60,7 +60,7 @@ export async function bond_info_cm_query(
       }
 
       const items = data.data[key];
-      const columns = ['名称', '代码'];
+      const columns = ['name', 'code'];
       const rows = Array.isArray(items)
         ? items.map((item: any) => [item.name || item, item.code || item])
         : [];
@@ -97,28 +97,51 @@ export async function bond_info_cm(
 ): Promise<DataFrame> {
   const url = 'https://www.chinamoney.com.cn/ags/ms/cm-u-bond-md/BondMarketInfoList2';
 
-  const payload = {
-    pageNo: '1',
-    pageSize: '100',
-    bondName,
-    bondCode,
-    issueEnty: bondIssue,
-    bondType,
-    bondSpclPrjctVrty: '',
-    couponType,
-    issueYear,
-    entyDefinedCode: underwriter,
-    rtngShrt: grade,
-  };
+  const buildPayload = (pageNo: string): URLSearchParams =>
+    new URLSearchParams({
+      pageNo,
+      pageSize: '15',
+      bondName,
+      bondCode,
+      issueEnty: bondIssue,
+      bondType,
+      bondSpclPrjctVrty: '',
+      couponType,
+      issueYear,
+      entyDefinedCode: underwriter,
+      rtngShrt: grade,
+    });
 
   try {
-    const data = await httpPost<any>(url, payload, {
+    const firstPayload = buildPayload('1');
+    const firstData = await httpPost<any>(url, firstPayload.toString(), {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
+        'Content-Type': 'application/x-www-form-urlencoded',
       },
     });
 
-    if (!data?.data?.resultList) {
+    if (!firstData?.data?.resultList) {
+      return createDataFrame([], []);
+    }
+
+    const totalPages = Number(firstData.data.pageTotal ?? 1);
+    const allRows: any[] = Array.isArray(firstData.data.resultList) ? [...firstData.data.resultList] : [];
+
+    for (let page = 2; page <= totalPages; page++) {
+      const pagePayload = buildPayload(String(page));
+      const pageData = await httpPost<any>(url, pagePayload.toString(), {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      });
+      if (Array.isArray(pageData?.data?.resultList)) {
+        allRows.push(...pageData.data.resultList);
+      }
+    }
+
+    if (allRows.length === 0) {
       return createDataFrame([], []);
     }
 
@@ -127,7 +150,7 @@ export async function bond_info_cm(
       '发行日期', '最新债项评级', '查询代码'
     ];
 
-    const rows = data.data.resultList.map((item: any) => [
+    const rows = allRows.map((item: any) => [
       item.bondName,
       item.bondCode,
       item.entyFullName,
@@ -167,12 +190,17 @@ export async function bond_info_detail_cm(symbol: string = '淮安农商行CDSD2
   const url = 'https://www.chinamoney.com.cn/ags/ms/cm-u-bond-md/BondDetailInfo';
 
   try {
-    const data = await httpPost<any>(url, { bondDefinedCode: bondCode }, {
+    const payload = new URLSearchParams({
+      bondDefinedCode: String(bondCode),
+    });
+
+    const data = await httpPost<any>(url, payload.toString(), {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
+        'Content-Type': 'application/x-www-form-urlencoded',
         'host': 'www.chinamoney.com.cn',
         'origin': 'https://www.chinamoney.com.cn',
-        'referer': 'https://www.chinamoney.com.cn/chinese/zqjc/',
+        'referer': 'https://www.chinamoney.com.cn/chinese/zqjc/?bondDefinedCode=egfjh08154',
       },
     });
 
@@ -181,17 +209,15 @@ export async function bond_info_detail_cm(symbol: string = '淮安农商行CDSD2
     }
 
     const bondInfo = data.data.bondBaseInfo;
-    const columns = ['名称', '值'];
+    const columns = ['name', 'value'];
     const rows: string[][] = [];
 
     for (const [key, value] of Object.entries(bondInfo)) {
-      // 跳过复杂对象
-      if (key === 'creditRateEntyList' || key === 'exerciseInfoList') {
+      // 与 Python 版对齐：仅当列表有内容时才剔除
+      if ((key === 'creditRateEntyList' || key === 'exerciseInfoList') && Array.isArray(value) && value.length > 0) {
         continue;
       }
-      if (value !== null && value !== undefined) {
-        rows.push([key, String(value)]);
-      }
+      rows.push([key, value === null || value === undefined ? '' : String(value)]);
     }
 
     return createDataFrame(columns, rows);

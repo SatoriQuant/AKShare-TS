@@ -93,7 +93,7 @@ export async function fund_aum_trend_em(): Promise<DataFrame> {
       return createDataFrame([], []);
     }
 
-    const columns = ['日期', '规模'];
+    const columns = ['date', 'value'];
     const rows = data.x.map((date: string, index: number) => [
       date,
       parseFloat(data.y[index]) || null,

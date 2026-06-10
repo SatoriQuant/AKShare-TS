@@ -34,7 +34,7 @@ export async function futures_hog_core(
     return createDataFrame([], []);
   }
 
-  const columns = ['日期', '价格'];
+  const columns = ['date', 'value'];
   const rows = data.data.map((item: any) => {
     // API 返回 [value, date] 格式
     const value = Array.isArray(item) ? item[0] : item.value;
@@ -76,7 +76,7 @@ export async function futures_hog_cost(
       return createDataFrame([], []);
     }
 
-    const columns = ['日期', '价格'];
+    const columns = ['date', 'value'];
     const rows = data.data.map((item: any) => {
       const value = Array.isArray(item) ? item[0] : item.value;
       const date = Array.isArray(item) ? item[1] : item.date;
@@ -102,7 +102,7 @@ export async function futures_hog_cost(
       return createDataFrame([], []);
     }
 
-    const columns = ['日期', '价格'];
+    const columns = ['date', 'value'];
     const rows = data.data.map((item: any) => {
       const date = Array.isArray(item) ? item[0] : item.date;
       const value = Array.isArray(item) ? item[1] : item.value;
@@ -161,7 +161,7 @@ export async function futures_hog_supply(
     case '猪肉批发价':
     case '肉类价格指数': {
       // 返回 [date, item, value]，去掉 item
-      const columns = ['日期', '价格'];
+      const columns = ['date', 'value'];
       const rows = data.data.map((item: any) => {
         if (Array.isArray(item)) {
           return [item[0], parseFloat(item[2]) || 0];
@@ -173,7 +173,7 @@ export async function futures_hog_supply(
 
     case '储备冻猪肉':
     case '猪粮比价': {
-      const columns = ['日期', '价格'];
+      const columns = ['date', 'value'];
       const rows = data.data.map((item: any) => {
         if (Array.isArray(item)) {
           return [item[0], parseFloat(item[1]) || 0];

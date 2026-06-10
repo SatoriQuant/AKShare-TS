@@ -114,39 +114,40 @@ export async function crypto_hist_em(
 }
 
 /**
- * 获取比特币 CME 期货数据
+ * 获取比特币 CME 成交量报告
  */
-export async function crypto_bitcoin_cme(): Promise<DataFrame> {
-  const url = 'https://datacenter-web.eastmoney.com/api/data/v1/get';
+export async function crypto_bitcoin_cme(date: string = '20230830'): Promise<DataFrame> {
+  const url = 'https://datacenter-api.jin10.com/reports/list';
   const params = {
-    reportName: 'RPT_CRYPTO_BITCOIN_CME',
-    columns: 'ALL',
-    pageNumber: '1',
-    pageSize: '1000',
-    sortTypes: '-1',
-    sortColumns: 'TRADE_DATE',
-    source: 'WEB',
-    client: 'WEB',
-    _: Date.now(),
+    category: 'cme',
+    date: `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`,
+    attr_id: '4',
   };
 
-  const data = await httpGet<any>(url, { params });
+  const headers = {
+    accept: '*/*',
+    origin: 'https://datacenter.jin10.com',
+    referer: 'https://datacenter.jin10.com/',
+    'x-app-id': 'rU6QIu7JHe2gOUeR',
+    'x-version': '1.0.0',
+    'x-csrf-token': '',
+    'User-Agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.106 Safari/537.36',
+  };
 
-  if (!data?.result?.data) {
+  try {
+    const data = await httpGet<any>(url, { params, headers });
+    const keys = data?.data?.keys;
+    const values = data?.data?.values;
+
+    if (!Array.isArray(keys) || !Array.isArray(values) || keys.length === 0) {
+      return createDataFrame([], []);
+    }
+
+    const columns = keys.map((item: any) => String(item?.name ?? '').trim());
+    const rows = values.map((item: any[]) => item.map((v) => (v === null || v === undefined ? '' : v)));
+    return createDataFrame(columns, rows);
+  } catch {
     return createDataFrame([], []);
   }
-
-  const columns = ['日期', '开盘', '最高', '最低', '收盘', '成交量', '持仓量'];
-
-  const rows = data.result.data.map((item: any) => [
-    item.TRADE_DATE,
-    item.OPEN,
-    item.HIGH,
-    item.LOW,
-    item.CLOSE,
-    item.VOLUME,
-    item.OPEN_INTEREST,
-  ]);
-
-  return createDataFrame(columns, rows);
 }

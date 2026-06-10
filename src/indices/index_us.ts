@@ -2,52 +2,62 @@
  * AKShare TypeScript - 美国指数数据接口
  */
 
-import { httpGet } from '../utils/httpClient';
+import { httpGet, httpGetText } from '../utils/httpClient';
 import {
   createDataFrame,
   DataFrame,
 } from '../utils/dataframe';
+import { decodeSinaUSData } from '../utils/jsDecode';
 
 /**
  * 获取美国指数实时行情 - 东方财富
  */
-export async function index_us_stock_sina(): Promise<DataFrame> {
-  const url = 'https://79.push2.eastmoney.com/api/qt/clist/get';
-  const params = {
-    pn: '1',
-    pz: '100',
-    po: '1',
-    np: '1',
-    ut: 'bd1d9ddb04089700cf9c27f6f7426281',
-    fltt: '2',
-    invt: '2',
-    fid: 'f3',
-    fs: 'm:105,m:106,m:107',
-    fields: 'f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f12,f13,f14,f15,f16,f17,f18,f20,f21,f23,f24,f25,f22,f11,f62,f128,f136,f115,f152',
-    _: Date.now(),
-  };
+export async function index_us_stock_sina(symbol: string = '.INX'): Promise<DataFrame> {
+  const url = `https://finance.sina.com.cn/staticdata/us/${symbol}`;
+  try {
+    const text = await httpGetText(url);
+    const encoded = text.split('=')[1]?.split(';')[0]?.replace(/"/g, '');
+    if (!encoded) {
+      return createDataFrame([], []);
+    }
 
-  const data = await httpGet<any>(url, { params });
+    const decoded = decodeSinaUSData(encoded);
+    if (!Array.isArray(decoded) || decoded.length === 0) {
+      return createDataFrame([], []);
+    }
 
-  if (!data?.data?.diff) {
+    const columns = ['date', 'open', 'high', 'low', 'close', 'volume', 'amount'];
+    const toNum = (v: any): number | null => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const rows = decoded.map((item: any) => {
+      let dateStr: string;
+      const d = item.date;
+      if (d && typeof d.getFullYear === 'function') {
+        // VM-sandboxed Date objects don't pass instanceof Date
+        dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      } else if (d instanceof Date) {
+        dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      } else {
+        dateStr = String(d ?? '');
+      }
+      return [
+        dateStr,
+        toNum(item.open),
+        toNum(item.high),
+        toNum(item.low),
+        toNum(item.close),
+        toNum(item.volume),
+        toNum(item.amount),
+      ];
+    });
+
+    return createDataFrame(columns, rows);
+  } catch {
     return createDataFrame([], []);
   }
-
-  const columns = [
-    '指数代码', '指数名称', '最新价', '涨跌幅', '涨跌额', '成交量', '成交额'
-  ];
-
-  const rows = data.data.diff.map((item: any) => [
-    item.f12,  // 指数代码
-    item.f14,  // 指数名称
-    item.f2,   // 最新价
-    item.f3,   // 涨跌幅
-    item.f4,   // 涨跌额
-    item.f5,   // 成交量
-    item.f6,   // 成交额
-  ]);
-
-  return createDataFrame(columns, rows);
 }
 
 /**

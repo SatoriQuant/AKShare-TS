@@ -211,34 +211,63 @@ export async function air_quality_rank(date: string = ''): Promise<DataFrame> {
   else if (date.length === 6) tableIndex = 2;
   else if (date.length === 4) tableIndex = 3;
 
-  const table = tableMatch[tableIndex];
-  const rows: any[][] = [];
+  const parseTableRows = (tableHtml: string): string[][] => {
+    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    const parsedRows: string[][] = [];
+    let rowMatch;
 
-  // Extract rows from table
-  const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-  let rowMatch;
-  let isFirstRow = true;
+    while ((rowMatch = rowRegex.exec(tableHtml)) !== null) {
+      const rowHtml = rowMatch[1];
+      const cells: string[] = [];
+      const cellRegex = /<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi;
+      let cellMatch;
 
-  while ((rowMatch = rowRegex.exec(table)) !== null) {
-    if (isFirstRow) {
-      isFirstRow = false;
-      continue; // Skip header
+      while ((cellMatch = cellRegex.exec(rowHtml)) !== null) {
+        const text = cellMatch[1]
+          .replace(/<[^>]+>/g, '')
+          .replace(/&nbsp;/gi, ' ')
+          .replace(/&amp;/gi, '&')
+          .trim();
+        cells.push(text);
+      }
+
+      if (cells.length > 0) {
+        parsedRows.push(cells);
+      }
     }
 
-    const cells: string[] = [];
-    const cellRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
-    let cellMatch;
+    return parsedRows;
+  };
 
-    while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
-      cells.push(cellMatch[1].replace(/<[^>]+>/g, '').trim());
-    }
+  const rankTables = tableMatch
+    .map((table) => parseTableRows(table))
+    .filter((rows) => {
+      if (rows.length < 2) {
+        return false;
+      }
+      const headerLike = rows[0].join(' ');
+      const firstDataLike = rows[1].join(' ');
+      return /AQI|空气质量|PM2\.5|城市/.test(headerLike + firstDataLike);
+    });
 
-    if (cells.length > 0) {
-      rows.push(cells);
-    }
+  if (rankTables.length === 0) {
+    return createDataFrame([], []);
   }
 
-  // Determine columns based on the table content
-  const columns = rows.length > 0 ? rows[0].map((_, i) => `列${i + 1}`) : [];
-  return createDataFrame(columns, rows.length > 1 ? rows.slice(1) : []);
+  const selectedTable = rankTables[Math.min(tableIndex, rankTables.length - 1)];
+  const rawRows = selectedTable;
+
+  const columns = rawRows[0];
+  const dataRows = rawRows.slice(1);
+  const alignedRows = dataRows.map((row) =>
+    columns.map((_, i) => {
+      const cell = (row[i] ?? '').trim();
+      if (/^-?\d+(\.\d+)?$/.test(cell)) {
+        return Number(cell).toFixed(1);
+      }
+      return cell;
+    })
+  );
+
+  return createDataFrame(columns, alignedRows);
 }

@@ -45,11 +45,12 @@ export async function stock_sgt_reference_exchange_rate_sse(): Promise<DataFrame
     return createDataFrame([], []);
   }
 
-  const columns = ['适用日期', '参考汇率买入价', '参考汇率卖出价'];
+  const columns = ['适用日期', '参考汇率买入价', '参考汇率卖出价', '货币种类'];
   const rows = data.result.map((item: any) => [
-    item.updateDate,
+    item.validDate,
     item.buyPrice,
     item.sellPrice,
+    item.currencyType,
   ]);
 
   rows.sort((a: any[], b: any[]) => {
@@ -76,7 +77,7 @@ export async function stock_sgt_settlement_exchange_rate_sse(): Promise<DataFram
     isPagination: 'true',
     updateDate: '20120601',
     updateDateEnd: currentDate,
-    sqlId: 'FW_HGT_JSHL',
+    sqlId: 'FW_HGT_JSHDBL',
     'pageHelp.cacheSize': '1',
     'pageHelp.pageSize': '10000',
     'pageHelp.pageNo': '1',
@@ -96,11 +97,12 @@ export async function stock_sgt_settlement_exchange_rate_sse(): Promise<DataFram
     return createDataFrame([], []);
   }
 
-  const columns = ['适用日期', '买入结算汇兑比率', '卖出结算汇兑比率'];
+  const columns = ['适用日期', '买入结算汇兑比率', '卖出结算汇兑比率', '货币种类'];
   const rows = data.result.map((item: any) => [
-    item.updateDate,
+    item.validDate,
     item.buyPrice,
     item.sellPrice,
+    item.currencyType,
   ]);
 
   rows.sort((a: any[], b: any[]) => {

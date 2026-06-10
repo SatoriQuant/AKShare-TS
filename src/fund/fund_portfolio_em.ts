@@ -10,6 +10,20 @@ import {
   DataFrame,
 } from '../utils/dataframe';
 
+function parseLooseObject(text: string): any {
+  const start = text.indexOf('{');
+  if (start === -1) {
+    return null;
+  }
+  const body = text.slice(start).replace(/;\s*$/, '');
+  try {
+    return JSON.parse(body);
+  } catch {
+    const fn = new Function(`return (${body});`);
+    return fn();
+  }
+}
+
 /**
  * 获取基金持仓数据 - 东方财富
  * https://fundf10.eastmoney.com/ccmx_000001.html
@@ -33,27 +47,25 @@ export async function fund_portfolio_hold_em(
 
   try {
     const text = await httpGetText(url, { params });
-    const jsonStart = text.indexOf('{');
-    const jsonEnd = text.lastIndexOf('}');
-    if (jsonStart === -1 || jsonEnd === -1) {
-      return createDataFrame([], []);
-    }
-
-    const data = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+    const data = parseLooseObject(text);
 
     if (!data?.content) {
       return createDataFrame([], []);
     }
 
-    // 解析 HTML 表格内容
     const html = data.content as string;
 
     // 提取季度标签
-    const h4Regex = /<h4 class="t">[^<]*?(\d{4}年\d{1,2}季度)[^<]*?<\/h4>/g;
+    const h4Regex = /<h4 class='t'>([\s\S]*?)<\/h4>/g;
     const quarters: string[] = [];
     let h4Match;
     while ((h4Match = h4Regex.exec(html)) !== null) {
-      quarters.push(h4Match[1]);
+      const h4Text = h4Match[1].replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+      // Extract the full label like "2024年1季度股票投资明细"
+      const qMatch = h4Text.match(/(\d{4}年\d{1,2}季度[^ ]*)/);
+      if (qMatch) {
+        quarters.push(qMatch[1]);
+      }
     }
 
     // 解析表格数据
@@ -75,7 +87,6 @@ export async function fund_portfolio_hold_em(
       const tableHtml = tables[i];
       const quarter = quarters[i] || `季度${i + 1}`;
 
-      // 解析表格行
       const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
       let rowMatch;
       let isHeader = true;
@@ -93,14 +104,14 @@ export async function fund_portfolio_hold_em(
           cells.push(cellMatch[1].replace(/<[^>]*>/g, '').trim());
         }
 
-        if (cells.length >= 5) {
+        if (cells.length >= 6) {
           rows.push([
-            seqNum++,
-            cells[1] || '',  // 股票代码
-            cells[2] || '',  // 股票名称
-            parseFloat((cells[3] || '').replace('%', '')) || null,  // 占净值比例
-            parseFloat(cells[4] || '') || null,  // 持股数
-            parseFloat(cells[5] || '') || null,  // 持仓市值
+            String(seqNum++),
+            cells[1] || '',
+            cells[2] || '',
+            (cells[4] || '').replace('%', ''),
+            cells[5] || '',
+            (cells[6] || '').replace(/,/g, ''),
             quarter,
           ]);
         }
@@ -197,13 +208,7 @@ export async function fund_portfolio_bond_hold_em(
 
   try {
     const text = await httpGetText(url, { params });
-    const jsonStart = text.indexOf('{');
-    const jsonEnd = text.lastIndexOf('}');
-    if (jsonStart === -1 || jsonEnd === -1) {
-      return createDataFrame([], []);
-    }
-
-    const data = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+    const data = parseLooseObject(text);
 
     if (!data?.content) {
       return createDataFrame([], []);
@@ -212,11 +217,16 @@ export async function fund_portfolio_bond_hold_em(
     const html = data.content as string;
 
     // 提取季度标签
-    const h4Regex = /<h4 class="t">[^<]*?(\d{4}年\d{1,2}季度)[^<]*?<\/h4>/g;
+    const h4Regex = /<h4 class='t'>([\s\S]*?)<\/h4>/g;
     const quarters: string[] = [];
     let h4Match;
     while ((h4Match = h4Regex.exec(html)) !== null) {
-      quarters.push(h4Match[1]);
+      const h4Text = h4Match[1].replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+      // Extract the full label like "2023年4季度债券投资明细"
+      const qMatch = h4Text.match(/(\d{4}年\d{1,2}季度[^ ]*)/);
+      if (qMatch) {
+        quarters.push(qMatch[1]);
+      }
     }
 
     // 解析表格数据
@@ -257,11 +267,11 @@ export async function fund_portfolio_bond_hold_em(
 
         if (cells.length >= 4) {
           rows.push([
-            seqNum++,
+            String(seqNum++),
             cells[1] || '',
             cells[2] || '',
-            parseFloat((cells[3] || '').replace('%', '')) || null,
-            parseFloat(cells[4] || '') || null,
+            (cells[3] || '').replace('%', ''),
+            (cells[4] || '').replace(/,/g, ''),
             quarter,
           ]);
         }
@@ -303,13 +313,7 @@ export async function fund_portfolio_change_em(
 
   try {
     const text = await httpGetText(url, { params });
-    const jsonStart = text.indexOf('{');
-    const jsonEnd = text.lastIndexOf('}');
-    if (jsonStart === -1 || jsonEnd === -1) {
-      return createDataFrame([], []);
-    }
-
-    const data = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+    const data = parseLooseObject(text);
 
     if (!data?.content) {
       return createDataFrame([], []);
@@ -318,11 +322,15 @@ export async function fund_portfolio_change_em(
     const html = data.content as string;
 
     // 提取季度标签
-    const h4Regex = /<h4 class="t">[^<]*?(\d{4}年\d{1,2}季度)[^<]*?<\/h4>/g;
+    const h4Regex = /<h4 class='t'>([\s\S]*?)<\/h4>/g;
     const quarters: string[] = [];
     let h4Match;
     while ((h4Match = h4Regex.exec(html)) !== null) {
-      quarters.push(h4Match[1]);
+      const h4Text = h4Match[1].replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+      const qMatch = h4Text.match(/(\d{4}年\d{1,2}季度[^ ]*)/);
+      if (qMatch) {
+        quarters.push(qMatch[1]);
+      }
     }
 
     // 解析表格
@@ -363,11 +371,11 @@ export async function fund_portfolio_change_em(
 
         if (cells.length >= 5) {
           rows.push([
-            seqNum++,
+            String(seqNum++),
             cells[1] || '',
             cells[2] || '',
-            parseFloat(cells[3] || '') || null,
-            parseFloat((cells[4] || '').replace('%', '')) || null,
+            (cells[4] || '').replace(/,/g, ''),
+            (cells[5] || '').replace('%', ''),
             quarter,
           ]);
         }

@@ -4,6 +4,7 @@
  * https://fund.eastmoney.com/manager/default.html
  */
 
+import vm from 'vm';
 import { httpGetText } from '../utils/httpClient';
 import {
   createDataFrame,
@@ -16,7 +17,7 @@ import {
  * https://fund.eastmoney.com/manager/default.html
  */
 export async function fund_manager_em(): Promise<DataFrame> {
-  const url = 'https://fund.eastmoney.com/data/FundDataPortfolio_Interface.aspx';
+  const url = 'https://fund.eastmoney.com/Data/FundDataPortfolio_Interface.aspx';
   const params = {
     dt: '14',
     mc: 'returnjson',
@@ -30,7 +31,11 @@ export async function fund_manager_em(): Promise<DataFrame> {
   try {
     // 先获取第一页得到总页数
     const text = await httpGetText(url, { params });
-    const data = JSON.parse(text.replace('var returnjson= ', ''));
+    // Response uses JS object literal syntax (unquoted keys) - use VM eval
+    const cleanText = text.replace(/^var\s+returnjson\s*=\s*/, '');
+    const sandbox: any = {};
+    vm.createContext(sandbox);
+    const data = vm.runInContext(`(${cleanText})`, sandbox);
     const totalPages = parseInt(data.pages) || 1;
     const allData: any[][] = [...(data.data || [])];
 
@@ -38,7 +43,10 @@ export async function fund_manager_em(): Promise<DataFrame> {
     for (let page = 2; page <= totalPages; page++) {
       const pageParams = { ...params, pi: String(page) };
       const pageText = await httpGetText(url, { params: pageParams });
-      const pageData = JSON.parse(pageText.replace('var returnjson= ', ''));
+      const cleanPageText = pageText.replace(/^var\s+returnjson\s*=\s*/, '');
+      const pageSandbox: any = {};
+      vm.createContext(pageSandbox);
+      const pageData = vm.runInContext(`(${cleanPageText})`, pageSandbox);
       if (pageData.data) {
         allData.push(...pageData.data);
       }
@@ -50,27 +58,35 @@ export async function fund_manager_em(): Promise<DataFrame> {
     ];
 
     const rows: any[][] = [];
-    let seqNum = 1;
 
-    for (const item of allData) {
-      const name = item[2] || '';
-      const company = item[4] || '';
-      const fundCodes = (item[5] || '').split(',');
-      const fundNames = (item[6] || '').split(',');
-      const workTime = parseFloat(item[7]) || null;
-      const bestReturnStr = (item[8] || '').replace('%', '');
-      const bestReturn = parseFloat(bestReturnStr) || null;
-      const totalScaleStr = (item[11] || '').replace('亿元', '');
-      const totalScale = parseFloat(totalScaleStr) || null;
+    const toNum = (v: any): number | null => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    for (let idx = 0; idx < allData.length; idx++) {
+      const item = allData[idx];
+      const name = item[1] || '';
+      const company = item[3] || '';
+      const fundCodes = (item[4] || '').split(',');
+      const fundNames = (item[5] || '').split(',');
+      const workTime = toNum(item[6]);
+      const bestReturnStr = (item[7] || '').replace('%', '');
+      const bestReturn = toNum(bestReturnStr);
+      const totalScaleStr = (item[10] || '').replace('亿元', '');
+      const totalScale = toNum(totalScaleStr);
 
       // 展开每个基金经理管理的多只基金
       for (let i = 0; i < fundCodes.length; i++) {
+        const code = fundCodes[i] || '';
+        const fund = fundNames[i] || '';
+        if (!code && !fund) continue;
         rows.push([
-          seqNum++,
+          idx + 1,
           name,
           company,
-          fundCodes[i] || '',
-          fundNames[i] || '',
+          code,
+          fund,
           workTime,
           totalScale,
           bestReturn,

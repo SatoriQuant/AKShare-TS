@@ -10,6 +10,57 @@ import {
   DataFrame,
 } from '../utils/dataframe';
 
+type SinaBondItem = {
+  d?: string;
+  o?: string | number;
+  h?: string | number;
+  l?: string | number;
+  c?: string | number;
+  v?: string | number;
+} | any[];
+
+function formatDateOnly(value: any): string {
+  const raw = String(value ?? '').trim();
+  if (!raw) {
+    return '';
+  }
+  const dt = new Date(raw);
+  if (Number.isNaN(dt.getTime())) {
+    return raw;
+  }
+  return dt.toISOString().split('T')[0];
+}
+
+function parseNum(value: any): number | null {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+  const n = Number(value);
+  return Number.isNaN(n) ? null : n;
+}
+
+function normalizeSinaBondRow(item: SinaBondItem): [string, number | null, number | null, number | null, number | null, number | null] {
+  if (Array.isArray(item)) {
+    return [
+      formatDateOnly(item[0]),
+      parseNum(item[1]),
+      parseNum(item[2]),
+      parseNum(item[3]),
+      parseNum(item[4]),
+      parseNum(item[5]),
+    ];
+  }
+
+  return [
+    formatDateOnly(item?.d),
+    parseNum(item?.o),
+    parseNum(item?.h),
+    parseNum(item?.l),
+    parseNum(item?.c),
+    parseNum(item?.v),
+  ];
+}
+
 /**
  * 中国国债收益率代码映射
  */
@@ -70,16 +121,9 @@ export async function bond_gb_zh_sina(
       return createDataFrame([], []);
     }
 
-    const columns = ['日期', '开盘', '最高', '最低', '收盘', '成交量'];
+    const columns = ['date', 'open', 'high', 'low', 'close', 'volume'];
 
-    const rows = data.result.data.map((item: any[]) => [
-      item[0],
-      parseFloat(item[1]),
-      parseFloat(item[2]),
-      parseFloat(item[3]),
-      parseFloat(item[4]),
-      parseFloat(item[5]),
-    ]);
+    const rows = data.result.data.map((item: SinaBondItem) => normalizeSinaBondRow(item));
 
     return createDataFrame(columns, rows);
   } catch (error) {
@@ -110,16 +154,9 @@ export async function bond_gb_us_sina(
       return createDataFrame([], []);
     }
 
-    const columns = ['日期', '开盘', '最高', '最低', '收盘', '成交量'];
+    const columns = ['date', 'open', 'high', 'low', 'close', 'volume'];
 
-    const rows = data.result.data.map((item: any[]) => [
-      item[0],
-      parseFloat(item[1]),
-      parseFloat(item[2]),
-      parseFloat(item[3]),
-      parseFloat(item[4]),
-      parseFloat(item[5]),
-    ]);
+    const rows = data.result.data.map((item: SinaBondItem) => normalizeSinaBondRow(item));
 
     return createDataFrame(columns, rows);
   } catch (error) {

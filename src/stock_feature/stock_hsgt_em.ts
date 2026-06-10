@@ -320,8 +320,8 @@ export async function stock_hsgt_stock_statistics_em(
  */
 export async function stock_hsgt_institution_statistics_em(
   market: string = '北向持股',
-  start_date: string = '20220601',
-  end_date: string = '20220609'
+  start_date: string = '20260601',
+  end_date: string = '20260609'
 ): Promise<DataFrame> {
   const start = `${start_date.slice(0, 4)}-${start_date.slice(4, 6)}-${start_date.slice(6)}`;
   const end = `${end_date.slice(0, 4)}-${end_date.slice(4, 6)}-${end_date.slice(6)}`;

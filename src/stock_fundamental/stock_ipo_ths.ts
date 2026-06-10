@@ -3,74 +3,76 @@
  * https://data.10jqka.com.cn/ipo/xgsgyzq/
  */
 
-import { httpGetText } from '../utils/httpClient';
+import { httpGetText, httpGetTextGbk } from '../utils/httpClient';
 import { createDataFrame, DataFrame } from '../utils/dataframe';
 
 /**
  * 同花顺-数据中心-新股申购与中签
+ * https://data.10jqka.com.cn/ipo/xgsgyzq/
+ *
+ * Uses cheerio for HTML parsing (same as Python AKShare with BeautifulSoup).
  *
  * @param symbol 市场类型: "全部A股", "沪市主板", "深市主板", "创业板", "科创板", "京市主板"
  */
 export async function stock_ipo_ths(symbol: string = '全部A股'): Promise<DataFrame> {
-  const symbolMap: Record<string, string> = {
-    '全部A股': 'all',
-    '沪市主板': 'hszb',
-    '深市主板': 'sszb',
-    '创业板': 'cyb',
-    '科创板': 'kcbsg',
-    '京市主板': 'bjzb',
-  };
+  try {
+    const { load } = await import('cheerio');
 
-  if (!(symbol in symbolMap)) {
-    throw new Error(`Invalid symbol: ${symbol}. Please choose from ${Object.keys(symbolMap).join(', ')}`);
-  }
+    const symbolMap: Record<string, string> = {
+      '全部A股': 'all',
+      '沪市主板': 'hszb',
+      '深市主板': 'sszb',
+      '创业板': 'cyb',
+      '科创板': 'kcbsg',
+      '京市主板': 'bjzb',
+    };
 
-  const url = `https://data.10jqka.com.cn/ipo/xgsgyzq/${symbolMap[symbol]}/`;
-  const htmlText = await httpGetText(url);
-
-  // Parse HTML table - look for table with id="maintable" or class="m_table"
-  const tableMatch = htmlText.match(/<table[^>]*(?:id="maintable"|class="m_table")[^>]*>([\s\S]*?)<\/table>/);
-  if (!tableMatch) {
-    return createDataFrame([], []);
-  }
-
-  const tableContent = tableMatch[1];
-
-  // Extract headers from thead
-  const theadMatch = tableContent.match(/<thead>([\s\S]*?)<\/thead>/);
-  let headers: string[] = [];
-  if (theadMatch) {
-    const thMatches = theadMatch[1].match(/<th[^>]*>([\s\S]*?)<\/th>/g);
-    if (thMatches) {
-      headers = thMatches.map(th => th.replace(/<[^>]+>/g, '').trim());
+    if (!(symbol in symbolMap)) {
+      throw new Error(`Invalid symbol: ${symbol}. Please choose from ${Object.keys(symbolMap).join(', ')}`);
     }
-  }
 
-  // Extract data from tbody
-  const tbodyMatch = tableContent.match(/<tbody>([\s\S]*?)<\/tbody>/);
-  const tbodyContent = tbodyMatch ? tbodyMatch[1] : tableContent;
+    const url = `https://data.10jqka.com.cn/ipo/xgsgyzq/${symbolMap[symbol]}/`;
+    const htmlText = await httpGetTextGbk(url);
+    const $ = load(htmlText);
 
-  const trMatches = tbodyContent.match(/<tr[^>]*>([\s\S]*?)<\/tr>/g);
-  if (!trMatches) {
-    return createDataFrame([], []);
-  }
+    // Find the main table
+    const table = $('table#maintable').length > 0 ? $('table#maintable') : $('table.m_table');
+    if (table.length === 0) {
+      return createDataFrame([], []);
+    }
 
-  const rows: any[][] = [];
-  for (const tr of trMatches) {
-    const tdMatches = tr.match(/<td[^>]*>([\s\S]*?)<\/td>/g);
-    if (tdMatches) {
-      const row = tdMatches.map(td => td.replace(/<[^>]+>/g, '').trim());
-      if (row.length > 0) {
-        rows.push(row);
+    // Extract headers - only take first set (18 columns)
+    const allHeaders: string[] = [];
+    table.find('thead th').each((_, th) => {
+      allHeaders.push($(th).text().trim());
+    });
+    // The HTML may have duplicate header rows; take only the first 18
+    const headers = allHeaders.slice(0, 18);
+
+    // Extract data rows
+    const rows: string[][] = [];
+    const tbody = table.find('tbody').length > 0 ? table.find('tbody') : table;
+    tbody.find('tr').each((_, tr) => {
+      const cells: string[] = [];
+      $(tr).find('td').each((_, td) => {
+        // Clean up text: collapse whitespace, trim
+        let text = $(td).text().replace(/\s+/g, ' ').trim();
+        cells.push(text);
+      });
+      if (cells.length >= 18) {
+        rows.push(cells.slice(0, 18));
       }
+    });
+
+    if (headers.length === 0 && rows.length > 0) {
+      const generatedHeaders = rows[0].map((_, i) => `列${i + 1}`);
+      return createDataFrame(generatedHeaders, rows);
     }
-  }
 
-  if (headers.length === 0 && rows.length > 0) {
-    headers = rows[0].map((_: any, i: number) => `列${i + 1}`);
+    return createDataFrame(headers, rows);
+  } catch (error) {
+    return createDataFrame([], []);
   }
-
-  return createDataFrame(headers, rows);
 }
 
 /**
@@ -78,50 +80,46 @@ export async function stock_ipo_ths(symbol: string = '全部A股'): Promise<Data
  * https://data.10jqka.com.cn/ipo/xgsgyzq/
  */
 export async function stock_ipo_hk_ths(): Promise<DataFrame> {
-  const url = 'https://data.10jqka.com.cn/ipo/xgsgyzq/hkstock/';
-  const htmlText = await httpGetText(url);
+  try {
+    const { load } = await import('cheerio');
 
-  // Parse HTML table
-  const tableMatch = htmlText.match(/<table[^>]*(?:id="maintable"|class="m_table")[^>]*>([\s\S]*?)<\/table>/);
-  if (!tableMatch) {
-    return createDataFrame([], []);
-  }
+    const url = 'https://data.10jqka.com.cn/ipo/xgsgyzq/hkstock/';
+    const htmlText = await httpGetTextGbk(url);
+    const $ = load(htmlText);
 
-  const tableContent = tableMatch[1];
-
-  // Extract headers
-  const theadMatch = tableContent.match(/<thead>([\s\S]*?)<\/thead>/);
-  let headers: string[] = [];
-  if (theadMatch) {
-    const thMatches = theadMatch[1].match(/<th[^>]*>([\s\S]*?)<\/th>/g);
-    if (thMatches) {
-      headers = thMatches.map(th => th.replace(/<[^>]+>/g, '').trim());
+    const table = $('table#maintable').length > 0 ? $('table#maintable') : $('table.m_table');
+    if (table.length === 0) {
+      return createDataFrame([], []);
     }
-  }
 
-  // Extract data
-  const tbodyMatch = tableContent.match(/<tbody>([\s\S]*?)<\/tbody>/);
-  const tbodyContent = tbodyMatch ? tbodyMatch[1] : tableContent;
+    // Extract headers - only take first set (18 columns)
+    const allHeaders: string[] = [];
+    table.find('thead th').each((_, th) => {
+      allHeaders.push($(th).text().trim());
+    });
+    const headers = allHeaders.slice(0, 18);
 
-  const trMatches = tbodyContent.match(/<tr[^>]*>([\s\S]*?)<\/tr>/g);
-  if (!trMatches) {
-    return createDataFrame([], []);
-  }
-
-  const rows: any[][] = [];
-  for (const tr of trMatches) {
-    const tdMatches = tr.match(/<td[^>]*>([\s\S]*?)<\/td>/g);
-    if (tdMatches) {
-      const row = tdMatches.map(td => td.replace(/<[^>]+>/g, '').trim());
-      if (row.length > 0) {
-        rows.push(row);
+    const rows: string[][] = [];
+    const tbody = table.find('tbody').length > 0 ? table.find('tbody') : table;
+    tbody.find('tr').each((_, tr) => {
+      const cells: string[] = [];
+      $(tr).find('td').each((_, td) => {
+        // Clean up text: collapse whitespace, trim
+        let text = $(td).text().replace(/\s+/g, ' ').trim();
+        cells.push(text);
+      });
+      if (cells.length >= 18) {
+        rows.push(cells.slice(0, 18));
       }
+    });
+
+    if (headers.length === 0 && rows.length > 0) {
+      const generatedHeaders = rows[0].map((_, i) => `列${i + 1}`);
+      return createDataFrame(generatedHeaders, rows);
     }
-  }
 
-  if (headers.length === 0 && rows.length > 0) {
-    headers = rows[0].map((_: any, i: number) => `列${i + 1}`);
+    return createDataFrame(headers, rows);
+  } catch (error) {
+    return createDataFrame([], []);
   }
-
-  return createDataFrame(headers, rows);
 }

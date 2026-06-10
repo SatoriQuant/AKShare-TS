@@ -183,6 +183,7 @@ export class HttpClient {
         params: config?.params,
         headers: config?.headers,
         timeout: config?.timeout,
+        responseType: config?.responseType ?? 'json',
       })
     );
     return response.data;
@@ -197,6 +198,7 @@ export class HttpClient {
         params: config?.params,
         headers: config?.headers,
         timeout: config?.timeout,
+        responseType: config?.responseType ?? 'json',
       })
     );
     return response.data;
@@ -211,7 +213,7 @@ export class HttpClient {
         params: config?.params,
         headers: config?.headers,
         timeout: config?.timeout,
-        responseType: 'text',
+        responseType: config?.responseType ?? 'text',
       })
     );
   }
@@ -263,6 +265,26 @@ export async function httpPost<T = any>(url: string, data?: any, config?: Reques
  */
 export async function httpGetText(url: string, config?: RequestConfig): Promise<string> {
   return defaultHttpClient.getText(url, config);
+}
+
+/**
+ * 便捷的 GBK 编码文本请求函数
+ * 用于 THS 等使用 GBK 编码的网站
+ */
+export async function httpGetTextGbk(url: string, config?: RequestConfig): Promise<string> {
+  const axios = (await import('axios')).default;
+  const response = await axios.get(url, {
+    params: config?.params,
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      ...config?.headers,
+    },
+    responseType: 'arraybuffer',
+    timeout: config?.timeout ?? 30000,
+  });
+  const buffer = response.data as ArrayBuffer;
+  const decoder = new TextDecoder('gbk');
+  return decoder.decode(buffer);
 }
 
 /**

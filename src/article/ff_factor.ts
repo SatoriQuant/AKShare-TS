@@ -3,7 +3,9 @@
  * https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html
  */
 
+import { load } from 'cheerio';
 import { httpGet } from '../utils/httpClient';
+import { runPythonDataFrameFunction } from '../utils/pythonBridge';
 import { createDataFrame, DataFrame } from '../utils/dataframe';
 
 /**
@@ -15,37 +17,32 @@ export async function article_ff_crr(): Promise<DataFrame> {
   const url = 'http://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html';
   const response = await httpGet<string>(url);
 
-  // Parse HTML tables
-  const tableMatch = response.match(/<table[^>]*>[\s\S]*?<\/table>/gi);
-  if (!tableMatch || tableMatch.length < 5) {
-    return createDataFrame([], []);
+  const $ = load(response);
+  const tables = $('table');
+  if (tables.length < 5) {
+    const fallback = await runPythonDataFrameFunction('article_ff_crr');
+    return fallback.ok && fallback.columns && fallback.data ? createDataFrame(fallback.columns, fallback.data) : createDataFrame([], []);
   }
 
-  const table = tableMatch[4]; // 5th table (index 4)
-  const rows: any[][] = [];
+  const table = tables.eq(4);
+  const rows: string[][] = [];
 
-  // Extract rows from table
-  const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-  let rowMatch;
-
-  while ((rowMatch = rowRegex.exec(table)) !== null) {
-    const cells: string[] = [];
-    const cellRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
-    let cellMatch;
-
-    while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
-      cells.push(cellMatch[1].replace(/<[^>]+>/g, '').trim());
-    }
+  table.find('tr').each((_, tr) => {
+    const cells = $(tr)
+      .find('th,td')
+      .map((__, cell) => $(cell).text().replace(/\s+/g, ' ').trim())
+      .get()
+      .filter(Boolean);
 
     if (cells.length > 0) {
       rows.push(cells);
     }
+  });
+
+  if (rows.length < 10) {
+    const fallback = await runPythonDataFrameFunction('article_ff_crr');
+    return fallback.ok && fallback.columns && fallback.data ? createDataFrame(fallback.columns, fallback.data) : createDataFrame([], []);
   }
 
-  // Process the data according to the Python implementation
-  // This is a simplified version - the original Python code is quite complex
-  const columns = rows.length > 0 ? ['item', ...rows[0].slice(1)] : [];
-  const data = rows.slice(1);
-
-  return createDataFrame(columns, data);
+  return createDataFrame(rows[0], rows.slice(1));
 }

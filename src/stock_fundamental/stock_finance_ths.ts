@@ -3,7 +3,7 @@
  * https://basic.10jqka.com.cn/new/000063/finance.html
  */
 
-import { httpGet, httpGetText } from '../utils/httpClient';
+import { httpGet, httpGetText, httpGetTextGbk } from '../utils/httpClient';
 import { createDataFrame, DataFrame } from '../utils/dataframe';
 
 /**
@@ -485,22 +485,146 @@ export async function stock_financial_cash_new_ths(
 
 /**
  * 同花顺-公司大事-高管持股变动
+ * https://basic.10jqka.com.cn/new/688981/event.html
  *
  * @param symbol 股票代码，如 "688981"
  */
 export async function stock_management_change_ths(symbol: string = '688981'): Promise<DataFrame> {
-  const columns = ['变动日期', '姓名', '变动数量', '交易均价', '剩余股数', '变动原因'];
-  // Requires HTML parsing with BeautifulSoup-like functionality
-  return createDataFrame(columns, []);
+  try {
+    const { load } = await import('cheerio');
+
+    const url = `https://basic.10jqka.com.cn/new/${symbol}/event.html`;
+    const text = await httpGetTextGbk(url);
+    const $ = load(text);
+
+    const table = $('table.data_table_1.m_table.m_hl');
+    if (table.length === 0) {
+      return createDataFrame([], []);
+    }
+
+    // Use only the first matching table (高管持股变动)
+    const firstTable = table.first();
+    const headers: string[] = [];
+    firstTable.find('thead th').each((_, th) => {
+      headers.push($(th).text().trim());
+    });
+
+    if (headers.length === 0) {
+      return createDataFrame([], []);
+    }
+
+    // Extract data rows
+    const rows: any[][] = [];
+    firstTable.find('tbody tr').each((_, tr) => {
+      const cells: string[] = [];
+      $(tr).find('td').each((_, td) => {
+        cells.push($(td).text().replace(/\s+/g, ' ').trim());
+      });
+      if (cells.length >= headers.length) {
+        rows.push(cells.slice(0, headers.length));
+      }
+    });
+
+    if (rows.length === 0) {
+      return createDataFrame([], []);
+    }
+
+    // Rename columns to match Python output
+    const columnRenames: Record<string, string> = {
+      '变动数量（股）': '变动数量',
+      '交易均价（元）': '交易均价',
+      '剩余股数（股）': '剩余股数',
+    };
+
+    const finalColumns = headers.map(h => columnRenames[h] || h);
+
+    // Convert date format from YYYY.MM.DD to YYYY-MM-DD and clean up values
+    const dateIdx = finalColumns.indexOf('变动日期');
+    const changeNumIdx = finalColumns.indexOf('变动数量');
+    for (const row of rows) {
+      if (dateIdx !== -1 && row[dateIdx]) {
+        row[dateIdx] = String(row[dateIdx]).replace(/\./g, '-');
+      }
+      // Clean up 变动数量: remove space between direction and number
+      if (changeNumIdx !== -1 && row[changeNumIdx]) {
+        row[changeNumIdx] = String(row[changeNumIdx]).replace(/\s+/g, '');
+      }
+    }
+
+    // Sort by 变动日期
+    if (dateIdx !== -1) {
+      rows.sort((a, b) => String(a[dateIdx]).localeCompare(String(b[dateIdx])));
+    }
+
+    return createDataFrame(finalColumns, rows);
+  } catch (error) {
+    return createDataFrame([], []);
+  }
 }
 
 /**
  * 同花顺-公司大事-股东持股变动
+ * https://basic.10jqka.com.cn/new/688981/event.html
  *
  * @param symbol 股票代码，如 "688981"
  */
 export async function stock_shareholder_change_ths(symbol: string = '688981'): Promise<DataFrame> {
-  const columns = ['公告日期', '股东名称', '变动数量', '交易均价', '剩余股份总数'];
-  // Requires HTML parsing with BeautifulSoup-like functionality
-  return createDataFrame(columns, []);
+  try {
+    const { load } = await import('cheerio');
+
+    const url = `https://basic.10jqka.com.cn/new/${symbol}/event.html`;
+    const text = await httpGetTextGbk(url);
+    const $ = load(text);
+
+    const table = $('table.m_table.data_table_1.m_hl');
+    if (table.length === 0) {
+      return createDataFrame([], []);
+    }
+
+    // Use the last matching table (股东持股变动 is the second table)
+    const lastTable = table.last();
+    const headers: string[] = [];
+    lastTable.find('thead th').each((_, th) => {
+      headers.push($(th).text().trim());
+    });
+
+    if (headers.length === 0) {
+      return createDataFrame([], []);
+    }
+
+    // Extract data rows (first cell may be <th> not <td>)
+    const rows: any[][] = [];
+    lastTable.find('tbody tr').each((_, tr) => {
+      const cells: string[] = [];
+      $(tr).find('th, td').each((_, cell) => {
+        cells.push($(cell).text().replace(/\s+/g, ' ').trim());
+      });
+      if (cells.length >= headers.length) {
+        rows.push(cells.slice(0, headers.length));
+      }
+    });
+
+    if (rows.length === 0) {
+      return createDataFrame([], []);
+    }
+
+    // Rename columns
+    const columnRenames: Record<string, string> = {
+      '变动数量(股)': '变动数量',
+      '交易均价(元)': '交易均价',
+      '剩余股份总数(股)': '剩余股份总数',
+    };
+
+    const finalColumns = headers.map(h => columnRenames[h] || h);
+
+    // Sort by 公告日期
+    const dateIdx = finalColumns.indexOf('公告日期');
+    if (dateIdx !== -1) {
+      rows.sort((a, b) => String(a[dateIdx]).localeCompare(String(b[dateIdx])));
+    }
+
+    return createDataFrame(finalColumns, rows);
+  } catch (error) {
+    return createDataFrame([], []);
+  }
 }

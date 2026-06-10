@@ -27,10 +27,6 @@ export async function futures_spot_stock(
 
   const url = 'https://data.eastmoney.com/ifdata/xhgp.html';
   const headers = {
-    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-    'Accept-Encoding': 'gzip, deflate',
-    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-    Host: 'data.eastmoney.com',
     'User-Agent':
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36',
   };
@@ -39,18 +35,14 @@ export async function futures_spot_stock(
     const html = await httpGetText(url, { headers });
 
     // Extract the pagedata JSON from the HTML
-    const dataStart = html.indexOf('pagedata');
-    const dataEnd = html.indexOf('/newstatic/js/common/emdataview.js');
-    if (dataStart === -1 || dataEnd === -1) {
+    const match = html.match(/pagedata\s*=\s*(\{[\s\S]*?\});\s*<\/script>/);
+    if (!match) {
       return createDataFrame([], []);
     }
 
-    let jsonStr = html.substring(dataStart, dataEnd);
-    jsonStr = jsonStr.replace('pagedata= ', '').replace(';\n        </script>\n        <script src="', '');
-
     let tempJson: any;
     try {
-      tempJson = JSON.parse(jsonStr);
+      tempJson = JSON.parse(match[1]);
     } catch {
       return createDataFrame([], []);
     }
@@ -76,18 +68,19 @@ export async function futures_spot_stock(
       const producers = Array.isArray(item.scss)
         ? item.scss.map((p: any) => p.name).join(', ')
         : '-';
-      const users = Array.isArray(item.xyyhs)
+      const users = Array.isArray(item.xyyhs) && item.xyyhs.length > 0
         ? item.xyyhs.map((u: any) => u.name).join(', ')
         : '-';
 
       return [
         item.name || '',
-        ...dateColumns.map((_, i) => {
-          const key = `price${i + 1}`;
-          return parseFloat(item[key]) || 0;
-        }),
-        parseFloat(item.price) || 0,
-        parseFloat(item.changeRate) || 0,
+        item.v1 || '',
+        item.v2 || '',
+        item.v3 || '',
+        item.v4 || '',
+        item.v5 || '',
+        item.price || '',
+        item.zdf || '',
         producers,
         users,
       ];

@@ -131,26 +131,35 @@ export async function stock_zh_a_gdhs_detail_em(symbol: string = '000001'): Prom
     }
   }
 
+  // Sort ascending by END_DATE to match Python
+  allData.sort((a: any, b: any) => {
+    const dateA = a.END_DATE || '';
+    const dateB = b.END_DATE || '';
+    return String(dateA).localeCompare(String(dateB));
+  });
+
   const columns = [
     '股东户数统计截止日', '区间涨跌幅', '股东户数-本次', '股东户数-上次',
     '股东户数-增减', '股东户数-增减比例', '户均持股市值', '户均持股数量',
-    '总市值', '总股本', '股东户数公告日期', '股本变动', '股本变动原因'
+    '总市值', '总股本', '股本变动', '股本变动原因', '股东户数公告日期', '代码', '名称',
   ];
 
   const rows = allData.map((item: any) => [
     item.END_DATE ? new Date(item.END_DATE).toISOString().split('T')[0] : null,
-    item.INTERVAL_CHRATE,
-    item.HOLDER_NUM,
-    item.PRE_HOLDER_NUM,
-    item.HOLDER_NUM_CHANGE,
-    item.HOLDER_NUM_RATIO,
-    item.AVG_MARKET_CAP,
-    item.AVG_HOLD_NUM,
-    item.TOTAL_MARKET_CAP,
-    item.TOTAL_A_SHARES,
-    item.HOLD_NOTICE_DATE ? new Date(item.HOLD_NOTICE_DATE).toISOString().split('T')[0] : null,
-    item.CHANGE_SHARES,
+    item.INTERVAL_CHRATE != null ? String(item.INTERVAL_CHRATE) : null,
+    item.HOLDER_NUM != null ? String(item.HOLDER_NUM) : null,
+    item.PRE_HOLDER_NUM != null ? String(item.PRE_HOLDER_NUM) : null,
+    item.HOLDER_NUM_CHANGE != null ? String(item.HOLDER_NUM_CHANGE) : null,
+    item.HOLDER_NUM_RATIO != null ? String(item.HOLDER_NUM_RATIO) : null,
+    item.AVG_MARKET_CAP != null ? String(item.AVG_MARKET_CAP) : null,
+    item.AVG_HOLD_NUM != null ? String(item.AVG_HOLD_NUM) : null,
+    item.TOTAL_MARKET_CAP != null ? String(item.TOTAL_MARKET_CAP) : null,
+    item.TOTAL_A_SHARES != null ? String(item.TOTAL_A_SHARES) : null,
+    item.CHANGE_SHARES != null ? String(item.CHANGE_SHARES) : null,
     item.CHANGE_REASON,
+    item.HOLD_NOTICE_DATE ? new Date(item.HOLD_NOTICE_DATE).toISOString().split('T')[0] : null,
+    item.SECURITY_CODE || symbol,
+    item.SECURITY_NAME_ABBR || '',
   ]);
 
   return createDataFrame(columns, rows);

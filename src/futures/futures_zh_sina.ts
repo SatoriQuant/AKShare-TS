@@ -3,6 +3,7 @@
  * https://vip.stock.finance.sina.com.cn/quotes_service/view/qihuohangqing.html
  */
 
+import axios from 'axios';
 import { httpGet } from '../utils/httpClient';
 import {
   createDataFrame,
@@ -43,33 +44,36 @@ export async function futures_zh_realtime(symbol: string = 'PTA'): Promise<DataF
     }
 
     const columns = [
-      'symbol', 'name', 'trade', 'settlement', 'presettlement',
+      'symbol', 'exchange', 'name', 'trade', 'settlement', 'presettlement',
       'open', 'high', 'low', 'close', 'bidprice1', 'askprice1',
-      'bidvol1', 'askvol1', 'volume', 'position', 'preclose',
-      'changepercent', 'bid', 'ask', 'prevsettlement',
+      'bidvol1', 'askvol1', 'volume', 'position', 'ticktime', 'tradedate',
+      'preclose', 'changepercent', 'bid', 'ask', 'prevsettlement',
     ];
 
     const rows = data.map((item: any) => [
       item.symbol || '',
+      item.exchange || '',
       item.name || '',
-      parseFloat(item.trade) || 0,
-      parseFloat(item.settlement) || 0,
-      parseFloat(item.presettlement) || 0,
-      parseFloat(item.open) || 0,
-      parseFloat(item.high) || 0,
-      parseFloat(item.low) || 0,
-      parseFloat(item.close) || 0,
-      parseFloat(item.bidprice1) || 0,
-      parseFloat(item.askprice1) || 0,
-      parseInt(item.bidvol1) || 0,
-      parseInt(item.askvol1) || 0,
-      parseInt(item.volume) || 0,
-      parseInt(item.position) || 0,
-      parseFloat(item.preclose) || 0,
-      parseFloat(item.changepercent) || 0,
-      parseFloat(item.bid) || 0,
-      parseFloat(item.ask) || 0,
-      parseFloat(item.prevsettlement) || 0,
+      item.trade || '',
+      item.settlement || '',
+      item.presettlement || '',
+      item.open || '',
+      item.high || '',
+      item.low || '',
+      item.close || '',
+      item.bidprice1 || '',
+      item.askprice1 || '',
+      item.bidvol1 || '',
+      item.askvol1 || '',
+      item.volume || '',
+      item.position || '',
+      item.ticktime || '',
+      item.tradedate || '',
+      item.preclose || '',
+      item.changepercent || '',
+      item.bid || '',
+      item.ask || '',
+      item.prevsettlement || '',
     ]);
 
     return createDataFrame(columns, rows);
@@ -86,26 +90,52 @@ async function getSymbolMark(): Promise<{ columns: string[]; data: string[][] }>
     'https://vip.stock.finance.sina.com.cn/quotes_service/view/js/qihuohangqing.js';
 
   try {
-    const response = await httpGet<string>(url, { responseType: 'text' });
-    if (typeof response !== 'string') {
+    const response = await axios.get<ArrayBuffer>(url, {
+      responseType: 'arraybuffer',
+      timeout: 30000,
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        Accept: 'text/javascript,*/*;q=0.8',
+      },
+    });
+
+    const rawBuffer = Buffer.from(response.data as any);
+    let rawText = '';
+    try {
+      rawText = new TextDecoder('gbk').decode(rawBuffer);
+    } catch {
+      rawText = rawBuffer.toString('utf8');
+    }
+
+    if (!rawText) {
       return { columns: [], data: [] };
     }
 
     // Parse the JS object from the response
-    const jsonStart = response.indexOf('{');
-    const jsonEnd = response.indexOf('}') + 1;
+    const jsonStart = rawText.indexOf('{');
+    const objectEnd = rawText.indexOf('};', jsonStart);
+    const jsonEnd = (objectEnd >= 0 ? objectEnd + 1 : rawText.indexOf('}', jsonStart) + 1);
     if (jsonStart === -1 || jsonEnd <= jsonStart) {
       return { columns: [], data: [] };
     }
 
-    const jsonStr = response.substring(jsonStart, jsonEnd);
+    const objectLiteral = rawText.substring(jsonStart, jsonEnd);
+    const jsonStr = objectLiteral
+      .replace(/([{,]\s*)([a-zA-Z0-9_]+)\s*:/g, '$1"$2":')
+      .replace(/'/g, '"')
+      .replace(/,\s*([}\]])/g, '$1');
+
     let dataJson: any;
     try {
       dataJson = JSON.parse(jsonStr);
     } catch {
-      // Try evaluating as JS object literal (demjson style)
-      // This is a simplified parser - in production you'd use a proper JS parser
-      return { columns: [], data: [] };
+      try {
+        // 新浪该接口返回的是 JS 对象字面量，兜底按 JS 语法解析
+        dataJson = Function(`"use strict"; return (${objectLiteral});`)();
+      } catch {
+        return { columns: [], data: [] };
+      }
     }
 
     const exchanges = ['czce', 'dce', 'shfe', 'cffex', 'gfex'];

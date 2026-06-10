@@ -72,12 +72,10 @@ export async function stock_js_weibo_report(
       return createDataFrame([], []);
     }
 
-    const columns = ['code', 'name', 'rate', 'color'];
+    const columns = ['name', 'rate'];
     const rows = data.data.map((item: any) => [
-      item.code,
       item.name,
       parseFloat(item.rate) || NaN,
-      item.color,
     ]);
 
     return createDataFrame(columns, rows);

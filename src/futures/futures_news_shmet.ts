@@ -69,16 +69,27 @@ export async function futures_news_shmet(
 
     const columns = ['发布时间', '内容'];
 
-    const rows = data.data.dataList.map((item: any[]) => {
-      // dataList items are arrays; index 3 is time, index 5 is content
-      const timestamp = item[3];
-      const content = item[5] || '';
+    const rows = data.data.dataList.map((item: any) => {
+      // 兼容对象结构与数组结构
+      const timestamp = item?.pushTime ?? item?.[3];
+      const content = item?.contentText ?? item?.content ?? item?.[5] ?? '';
 
       let publishTime = '';
       if (timestamp) {
         try {
-          const date = new Date(timestamp);
-          publishTime = date.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+          const millis = typeof timestamp === 'string' ? Number(timestamp) : timestamp;
+          const date = new Date(millis);
+          const formatted = new Intl.DateTimeFormat('sv-SE', {
+            timeZone: 'Asia/Shanghai',
+            hour12: false,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+          }).format(date);
+          publishTime = `${formatted.replace('T', ' ')}+08:00`;
         } catch {
           publishTime = String(timestamp);
         }
@@ -86,6 +97,8 @@ export async function futures_news_shmet(
 
       return [publishTime, content];
     });
+
+    rows.sort((a: any[], b: any[]) => String(a[0]).localeCompare(String(b[0])));
 
     return createDataFrame(columns, rows);
   } catch {

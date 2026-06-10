@@ -9,39 +9,117 @@ import {
 } from '../utils/dataframe';
 
 /**
- * 获取人民币汇率中间价 - 中国外汇交易中心
+ * 新浪财经-中行人民币牌价历史数据查询
  */
-export async function currency_boc_sina(): Promise<DataFrame> {
-  const url = 'https://datacenter-web.eastmoney.com/api/data/v1/get';
-  const params = {
-    reportName: 'RPT_FE_EXCHANGE_RATE',
-    columns: 'ALL',
-    pageNumber: '1',
-    pageSize: '10000',
-    sortTypes: '-1',
-    sortColumns: 'REPORT_DATE',
-    source: 'WEB',
-    client: 'WEB',
-    _: Date.now(),
+export async function currency_boc_sina(
+  symbol: string = '美元',
+  start_date: string = '20230304',
+  end_date: string = '20231110'
+): Promise<DataFrame> {
+  const url = 'http://biz.finance.sina.com.cn/forex/forex.php';
+  const symbolMap: Record<string, string> = {
+    美元: 'USD',
+    英镑: 'GBP',
+    欧元: 'EUR',
+    澳门元: 'MOP',
+    泰国铢: 'THB',
+    菲律宾比索: 'PHP',
+    港币: 'HKD',
+    瑞士法郎: 'CHF',
+    新加坡元: 'SGD',
+    瑞典克朗: 'SEK',
+    丹麦克朗: 'DKK',
+    挪威克朗: 'NOK',
+    日元: 'JPY',
+    加拿大元: 'CAD',
+    澳大利亚元: 'AUD',
+    新西兰元: 'NZD',
+    韩国元: 'KRW',
   };
 
-  const data = await httpGet<any>(url, { params });
+  const moneyCode = symbolMap[symbol] || symbolMap['美元'];
+  const baseParams = {
+    money_code: moneyCode,
+    type: '0',
+    startdate: `${start_date.slice(0, 4)}-${start_date.slice(4, 6)}-${start_date.slice(6, 8)}`,
+    enddate: `${end_date.slice(0, 4)}-${end_date.slice(4, 6)}-${end_date.slice(6, 8)}`,
+    call_type: 'ajax',
+  };
 
-  if (!data?.result?.data) {
+  const parseTableRows = (html: string): string[][] => {
+    const tableMatch = html.match(/<table[\s\S]*?<\/table>/i);
+    if (!tableMatch) {
+      return [];
+    }
+    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    const rows: string[][] = [];
+    let rowMatch: RegExpExecArray | null;
+
+    while ((rowMatch = rowRegex.exec(tableMatch[0])) !== null) {
+      const cellRegex = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
+      const cells: string[] = [];
+      let cellMatch: RegExpExecArray | null;
+      while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
+        cells.push(cellMatch[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/gi, ' ').trim());
+      }
+      if (cells.length > 0) {
+        rows.push(cells);
+      }
+    }
+
+    return rows;
+  };
+
+  const toPandasNumericString = (value: any): string => {
+    const raw = String(value ?? '').trim();
+    if (!raw) {
+      return '';
+    }
+    const num = Number(raw);
+    if (!Number.isFinite(num)) {
+      return '';
+    }
+    return Number.isInteger(num) ? num.toFixed(1) : num.toString();
+  };
+
+  try {
+    const firstHtml = await httpGetText(url, { params: { ...baseParams, page: '1' } });
+      const pageMatches = Array.from(firstHtml.matchAll(/<a[^>]*class="page"[^>]*>(\d+)<\/a>/gi));
+      const pageNum = pageMatches.length > 0
+        ? Math.max(...pageMatches.map((m) => Number(m[1] || 1)).filter((n) => Number.isFinite(n)))
+        : 1;
+
+    const allRows: string[][] = [];
+    for (let page = 1; page <= pageNum; page++) {
+      const pageHtml = await httpGetText(url, {
+        params: { ...baseParams, page: String(page) },
+      });
+      const rows = parseTableRows(pageHtml);
+      if (rows.length > 1) {
+        allRows.push(...rows.slice(1));
+      }
+    }
+
+    if (allRows.length === 0) {
+      return createDataFrame([], []);
+    }
+
+    allRows.sort((a, b) => String(a[0] || '').localeCompare(String(b[0] || '')));
+    const columns = ['日期', '中行汇买价', '中行钞买价', '中行钞卖价/汇卖价', '央行中间价', '中行折算价'];
+    return createDataFrame(
+      columns,
+      allRows.map((row) => [
+        row[0] ?? '',
+        toPandasNumericString(row[1]),
+        toPandasNumericString(row[2]),
+        toPandasNumericString(row[3]),
+        toPandasNumericString(row[4]),
+        toPandasNumericString(row[5]),
+      ])
+    );
+  } catch {
     return createDataFrame([], []);
   }
-
-  const columns = ['日期', '货币', '中间价', '买入价', '卖出价'];
-
-  const rows = data.result.data.map((item: any) => [
-    item.REPORT_DATE,
-    item.CURRENCY,
-    item.CENTER_RATE,
-    item.BUY_RATE,
-    item.SELL_RATE,
-  ]);
-
-  return createDataFrame(columns, rows);
 }
 
 /**

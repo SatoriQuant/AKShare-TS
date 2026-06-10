@@ -8,6 +8,32 @@ import {
   DataFrame,
 } from '../utils/dataframe';
 
+function parseLooseObject(text: string): any {
+  const start = text.indexOf('{');
+  if (start === -1) {
+    return null;
+  }
+  const body = text.slice(start).replace(/;\s*$/, '');
+  try {
+    return JSON.parse(body);
+  } catch {
+    const fn = new Function(`return (${body});`);
+    return fn();
+  }
+}
+
+function toPandasNumericString(value: any): string {
+  const raw = String(value ?? '').trim();
+  if (!raw) {
+    return '';
+  }
+  const num = Number(raw);
+  if (!Number.isFinite(num)) {
+    return '';
+  }
+  return Number.isInteger(num) ? num.toFixed(1) : num.toString();
+}
+
 /**
  * 获取基金列表 - 东方财富
  *
@@ -60,12 +86,7 @@ export async function fund_purchase_em(): Promise<DataFrame> {
   try {
     const text = await httpGetText(url, { params });
 
-    const match = text.match(/var\s+reData\s*=\s*(\{.*\})/s);
-    if (!match) {
-      return createDataFrame([], []);
-    }
-
-    const data = JSON.parse(match[1]);
+    const data = parseLooseObject(text.replace(/^\s*var\s+reData\s*=\s*/i, ''));
 
     if (!data?.datas) {
       return createDataFrame([], []);
@@ -82,14 +103,14 @@ export async function fund_purchase_em(): Promise<DataFrame> {
       item[0] || '',
       item[1] || '',
       item[2] || '',
-      parseFloat(item[3]) || null,
+      item[3] || '',
       item[4] || '',
       item[5] || '',
       item[6] || '',
       item[7] || '',
-      parseFloat(item[8]) || null,
-      parseFloat(item[9]) || null,
-      parseFloat(String(item[13] || '').replace('%', '')) || null,
+      item[8] || '',
+      item[9] || '',
+      item[13] || '',
     ]);
 
     return createDataFrame(columns, rows);
@@ -120,13 +141,7 @@ export async function fund_open_fund_daily_em(): Promise<DataFrame> {
   try {
     const text = await httpGetText(url, { params });
 
-    const match = text.match(/var\s+db\s*=\s*(\{.*\})/s);
-    if (!match) {
-      return createDataFrame([], []);
-    }
-
-    const data = JSON.parse(match[1]);
-
+    const data = parseLooseObject(text.replace(/^\s*var\s+db\s*=\s*/i, ''));
     if (!data?.datas || !data?.showday) {
       return createDataFrame([], []);
     }
@@ -143,12 +158,12 @@ export async function fund_open_fund_daily_em(): Promise<DataFrame> {
     const rows = data.datas.map((item: string[]) => [
       item[0] || '',
       item[1] || '',
-      parseFloat(item[3]) || null,
-      parseFloat(item[4]) || null,
-      parseFloat(item[5]) || null,
-      parseFloat(item[6]) || null,
-      parseFloat(item[7]) || null,
-      parseFloat(item[8]) || null,
+      item[3] || '',
+      item[4] || '',
+      item[5] || '',
+      item[6] || '',
+      item[7] || '',
+      item[8] || '',
       item[9] || '',
       item[10] || '',
       item[16] || '',
@@ -162,47 +177,53 @@ export async function fund_open_fund_daily_em(): Promise<DataFrame> {
 
 /**
  * 获取开放式基金历史净值 - 东方财富
+ * 通过解析 pingzhongdata JS 文件获取数据
  *
  * @param symbol 基金代码
  * @param startDate 开始日期
  * @param endDate 结束日期
  */
 export async function fund_open_fund_info_em(
-  symbol: string,
+  symbol: string = '710001',
   startDate?: string,
   endDate?: string
 ): Promise<DataFrame> {
-  const url = 'https://api.fund.eastmoney.com/f10/lsjz';
-  const params = {
-    fundCode: symbol,
-    pageIndex: '1',
-    pageSize: '10000',
-    startDate: startDate || '',
-    endDate: endDate || '',
-    _: Date.now(),
-  };
+  const url = `https://fund.eastmoney.com/pingzhongdata/${symbol}.js`;
 
   try {
-    const data = await httpGet<any>(url, {
-      params,
+    const text = await httpGetText(url, {
       headers: {
-        Referer: `https://fundf10.eastmoney.com/jjjz_${symbol}.html`,
+        Referer: 'https://fund.eastmoney.com/',
       },
     });
 
-    if (!data?.Data?.LSJZList) {
+    // Extract Data_netWorthTrend array
+    const match = text.match(/var\s+Data_netWorthTrend\s*=\s*(\[.*?\])\s*;/s);
+    if (!match) {
       return createDataFrame([], []);
     }
 
-    const columns = ['净值日期', '单位净值', '累计净值', '日增长率', '申购状态', '赎回状态'];
-    const rows = data.Data.LSJZList.map((item: any) => [
-      item.FSRQ,
-      parseFloat(item.DWJZ) || null,
-      parseFloat(item.LJJZ) || null,
-      parseFloat(item.JZZZL) || null,
-      item.SGZT,
-      item.SHZT,
-    ]);
+    const data: Array<{ x: number; y: number; equityReturn: number }> = JSON.parse(match[1]);
+
+    const columns = ['净值日期', '单位净值', '日增长率'];
+
+    let rows = data.map((item) => {
+      const date = new Date(item.x);
+      const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      return [
+        dateStr,
+        item.y !== null && item.y !== undefined ? String(item.y) : '',
+        item.equityReturn !== null && item.equityReturn !== undefined ? String(item.equityReturn) : '',
+      ];
+    });
+
+    // Filter by startDate and endDate if provided
+    if (startDate) {
+      rows = rows.filter((row) => row[0] >= startDate);
+    }
+    if (endDate) {
+      rows = rows.filter((row) => row[0] <= endDate);
+    }
 
     return createDataFrame(columns, rows);
   } catch (error) {
@@ -246,7 +267,10 @@ export async function fund_value_estimation_em(
     const data = await httpGet<any>(url, {
       params,
       headers: {
+        Accept: '*/*',
         Referer: 'https://fund.eastmoney.com/',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36',
       },
     });
 
@@ -279,40 +303,6 @@ export async function fund_value_estimation_em(
     return createDataFrame(columns, rows);
   } catch (error) {
     return createDataFrame([], []);
-  }
-}
-
-/**
- * 获取基金单只实时估值 - 东方财富
- *
- * @param symbol 基金代码，如 "000001"
- */
-export async function fund_value_estimation_detail_em(
-  symbol: string
-): Promise<Record<string, any>> {
-  const url = `https://fundgz.1234567.com.cn/js/${symbol}.js`;
-
-  try {
-    const text = await httpGetText(url);
-
-    const match = text.match(/jsonpgz\((.*)\)/);
-    if (!match) {
-      return {};
-    }
-
-    const data = JSON.parse(match[1]);
-
-    return {
-      基金代码: data.fundcode,
-      基金名称: data.name,
-      单位净值: parseFloat(data.dwjz),
-      估算值: parseFloat(data.gsz),
-      估算时间: data.gztime,
-      估算增长率: parseFloat(data.gszzl),
-      净值日期: data.jzrq,
-    };
-  } catch (error) {
-    return {};
   }
 }
 
@@ -373,7 +363,10 @@ export async function fund_info_index_em(
     const data = await httpGet<any>(url, {
       params,
       headers: {
+        Accept: '*/*',
         Referer: 'https://fund.eastmoney.com/',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36',
       },
     });
 
@@ -390,7 +383,7 @@ export async function fund_info_index_em(
     const columns = [
       '基金代码', '基金名称', '单位净值', '日期', '日增长率',
       '近1周', '近1月', '近3月', '近6月', '近1年', '近2年', '近3年',
-      '今年来', '成立来', '手续费', '起购金额',
+      '今年来', '成立来', '手续费', '起购金额', '跟踪标的', '跟踪方式',
     ];
 
     const rows = jsonData.datas.map((item: string) => {
@@ -398,20 +391,22 @@ export async function fund_info_index_em(
       return [
         parts[0] || '',
         parts[1] || '',
-        parseFloat(parts[4]) || null,
+        toPandasNumericString(parts[4]),
         parts[3] || '',
-        parseFloat(parts[5]) || null,
-        parseFloat(parts[6]) || null,
-        parseFloat(parts[7]) || null,
-        parseFloat(parts[8]) || null,
-        parseFloat(parts[9]) || null,
-        parseFloat(parts[10]) || null,
-        parseFloat(parts[11]) || null,
-        parseFloat(parts[12]) || null,
-        parseFloat(parts[13]) || null,
-        parseFloat(parts[14]) || null,
-        parseFloat(parts[18]) || null,
-        parseFloat(parts[24]) || null,
+        toPandasNumericString(parts[5]),
+        toPandasNumericString(parts[6]),
+        toPandasNumericString(parts[7]),
+        toPandasNumericString(parts[8]),
+        toPandasNumericString(parts[9]),
+        toPandasNumericString(parts[10]),
+        toPandasNumericString(parts[11]),
+        toPandasNumericString(parts[12]),
+        toPandasNumericString(parts[13]),
+        toPandasNumericString(parts[14]),
+        toPandasNumericString(parts[18]),
+        parts[24] || '',
+        symbol,
+        indicator,
       ];
     });
 
@@ -495,12 +490,7 @@ export async function fund_graded_fund_daily_em(): Promise<DataFrame> {
       },
     });
 
-    const match = text.match(/var\s+db\s*=\s*(\{.*\})/s);
-    if (!match) {
-      return createDataFrame([], []);
-    }
-
-    const data = JSON.parse(match[1]);
+    const data = parseLooseObject(text.replace(/^\s*var\s+db\s*=\s*/i, ''));
 
     if (!data?.datas || !data?.showday) {
       return createDataFrame([], []);
@@ -511,22 +501,22 @@ export async function fund_graded_fund_daily_em(): Promise<DataFrame> {
     const columns = [
       '基金代码', '基金简称',
       `${showDay[0]}-单位净值`, `${showDay[0]}-累计净值`,
-      `${showDay[1]}-单位净值`, `${showDay[1]}-累计净值`,
+      `${showDay[1]}--单位净值`, `${showDay[1]}--累计净值`,
       '日增长值', '日增长率', '市价', '折价率', '手续费',
     ];
 
-    const rows = data.datas.map((item: string[]) => [
-      item[0] || '',
-      item[1] || '',
-      parseFloat(item[3]) || null,
-      parseFloat(item[4]) || null,
-      parseFloat(item[5]) || null,
-      parseFloat(item[6]) || null,
-      parseFloat(item[7]) || null,
-      parseFloat(item[8]) || null,
-      parseFloat(item[9]) || null,
-      parseFloat(item[10]) || null,
-      item[18] || '',
+    const rows = data.datas.map((item: any[]) => [
+      item?.[0] ?? '',
+      item?.[1] ?? '',
+      item?.[3] ?? '',
+      item?.[4] ?? '',
+      item?.[5] ?? '',
+      item?.[6] ?? '',
+      item?.[7] ?? '',
+      item?.[8] ?? '',
+      item?.[9] ?? '',
+      item?.[10] ?? '',
+      item?.[19] ?? '',
     ]);
 
     return createDataFrame(columns, rows);
@@ -543,7 +533,58 @@ export async function fund_graded_fund_daily_em(): Promise<DataFrame> {
 export async function fund_graded_fund_info_em(
   symbol: string = '150232'
 ): Promise<DataFrame> {
-  return fund_open_fund_info_em(symbol);
+  const url = 'https://api.fund.eastmoney.com/f10/lsjz';
+  const headers = {
+    'User-Agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36',
+    Referer: `https://fundf10.eastmoney.com/jjjz_${symbol}.html`,
+  };
+
+  try {
+    const baseParams = {
+      fundCode: symbol,
+      pageIndex: '1',
+      pageSize: '20',
+      startDate: '',
+      endDate: '',
+      _: Date.now(),
+    };
+
+    const firstData = await httpGet<any>(url, { params: baseParams, headers });
+    const totalCount = Number(firstData?.TotalCount ?? 0);
+    if (!Array.isArray(firstData?.Data?.LSJZList) || totalCount <= 0) {
+      return createDataFrame([], []);
+    }
+
+    const totalPage = Math.ceil(totalCount / 20);
+    const allRows = [...firstData.Data.LSJZList];
+
+    for (let page = 2; page <= totalPage; page++) {
+      const pageData = await httpGet<any>(url, {
+        params: { ...baseParams, pageIndex: String(page), _: Date.now() + page },
+        headers,
+      });
+      if (Array.isArray(pageData?.Data?.LSJZList)) {
+        allRows.push(...pageData.Data.LSJZList);
+      }
+    }
+
+    allRows.sort((a: any, b: any) => String(a?.FSRQ ?? '').localeCompare(String(b?.FSRQ ?? '')));
+
+    const columns = ['净值日期', '单位净值', '累计净值', '日增长率', '申购状态', '赎回状态'];
+    const rows = allRows.map((item: any) => [
+      item?.FSRQ ?? '',
+      toPandasNumericString(item?.DWJZ),
+      toPandasNumericString(item?.LJJZ),
+      toPandasNumericString(item?.JZZZL),
+      item?.SGZT ?? '',
+      item?.SHZT ?? '',
+    ]);
+
+    return createDataFrame(columns, rows);
+  } catch {
+    return createDataFrame([], []);
+  }
 }
 
 /**
@@ -579,13 +620,24 @@ export async function fund_hk_fund_hist_em(
       }
 
       const columns = ['净值日期', '单位净值', '日增长值', '日增长率', '单位'];
-      const rows = data.Data.map((item: any[]) => [
-        item[3] || '',
-        parseFloat(item[4]) || null,
-        parseFloat(item[6]) || null,
-        parseFloat(item[7]) || null,
-        item[9] || '',
-      ]);
+      const rows = data.Data.map((item: any) => {
+        if (Array.isArray(item)) {
+          return [
+            item[3] || '',
+            item[4] ?? '',
+            item[6] ?? '',
+            item[7] ?? '',
+            item[9] || '',
+          ];
+        }
+        return [
+          item?.PDATE || '',
+          item?.NAV ?? '',
+          item?.NAVCHG ?? '',
+          item?.NAVCHGRT ?? '',
+          item?.CURRENCY || '',
+        ];
+      });
 
       return createDataFrame(columns, rows);
     } else {
@@ -607,14 +659,26 @@ export async function fund_hk_fund_hist_em(
       }
 
       const columns = ['年份', '权益登记日', '除息日', '分红发放日', '分红金额', '单位'];
-      const rows = data.Data.map((item: any[]) => [
-        item[5] || '',
-        item[8] || '',
-        item[7] || '',
-        item[9] || '',
-        parseFloat(item[6]) || null,
-        item[11] || '',
-      ]);
+      const rows = data.Data.map((item: any) => {
+        if (Array.isArray(item)) {
+          return [
+            item[5] || '',
+            item[8] || '',
+            item[7] || '',
+            item[9] || '',
+            item[6] ?? '',
+            item[11] || '',
+          ];
+        }
+        return [
+          item?.BYEAR || '',
+          item?.REGDATE || '',
+          item?.EXDDATE || '',
+          item?.ISSDATE || '',
+          item?.BONUS ?? '',
+          item?.CURRENCY || '',
+        ];
+      });
 
       return createDataFrame(columns, rows);
     }

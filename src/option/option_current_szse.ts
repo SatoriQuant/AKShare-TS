@@ -3,7 +3,8 @@
  * https://www.sse.org.cn/option/quotation/contract/daycontract/index.html
  */
 
-import { httpGet } from '../utils/httpClient';
+import axios from 'axios';
+import * as XLSX from 'xlsx';
 import {
   createDataFrame,
   DataFrame,
@@ -22,63 +23,70 @@ export async function option_current_day_szse(): Promise<DataFrame> {
     TABKEY: 'tab1',
   };
 
-  // 注意：此接口返回xlsx文件，需要特殊处理
-  // 在浏览器环境中可能需要使用其他方式解析
-  // 这里返回空DataFrame，实际使用时可能需要额外的xlsx解析库
   try {
-    const response = await httpGet<any>(url, { params });
+    const response = await axios.get(url, {
+      params,
+      responseType: 'arraybuffer',
+      timeout: 30000,
+    });
 
-    // 如果返回的是JSON格式数据
-    if (Array.isArray(response)) {
-      const columns = [
-        '序号', '合约编码', '合约代码', '合约简称', '标的证券简称(代码)',
-        '合约类型', '行权价', '合约单位', '最后交易日', '行权日', '到期日',
-        '交收日', '新挂', '涨停价格', '跌停价格', '前结算价', '合约调整',
-        '停牌', '合约总持仓', '挂牌原因', '原合约代码', '原合约简称',
-        '原行权价格', '原合约单位', '合约到期剩余交易天数', '合约到期剩余自然天数',
-        '下次合约调整剩余交易天数', '下次合约调整剩余自然天数', '交易日期'
-      ];
+    const wb = XLSX.read(response.data, { type: 'buffer' });
+    const sheetName = wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
+    const jsonRows = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { defval: '' });
 
-      const rows = response.map((item: any) => [
-        parseInt(item['序号']) || null,
-        item['合约编码'],
-        item['合约代码'],
-        item['合约简称'],
-        item['标的证券简称(代码)'],
-        item['合约类型'],
-        parseFloat(item['行权价']) || null,
-        parseInt(item['合约单位']) || null,
-        item['最后交易日'],
-        item['行权日'],
-        item['到期日'],
-        item['交收日'],
-        item['新挂'],
-        parseFloat(item['涨停价格']) || null,
-        parseFloat(item['跌停价格']) || null,
-        parseFloat(item['前结算价']) || null,
-        item['合约调整'],
-        item['停牌'],
-        parseInt(item['合约总持仓']) || null,
-        item['挂牌原因'],
-        item['原合约代码'],
-        item['原合约简称'],
-        parseFloat(item['原行权价格']) || null,
-        parseInt(item['原合约单位']) || null,
-        parseInt(item['合约到期剩余交易天数']) || null,
-        parseInt(item['合约到期剩余自然天数']) || null,
-        parseInt(item['下次合约调整剩余交易天数']) || null,
-        parseInt(item['下次合约调整剩余自然天数']) || null,
-        item['交易日期'],
-      ]);
-
-      return createDataFrame(columns, rows);
+    if (!Array.isArray(jsonRows) || jsonRows.length === 0) {
+      return createDataFrame([], []);
     }
 
-    // 如果无法解析，返回空DataFrame
-    console.warn('深交所期权数据返回格式不支持，可能需要xlsx解析库');
-    return createDataFrame([], []);
-  } catch (error) {
-    console.error('获取深交所期权数据失败:', error);
+    const columns = [
+      '序号', '合约编码', '合约代码', '合约简称', '标的证券简称(代码)',
+      '合约类型', '行权价', '合约单位', '最后交易日', '行权日', '到期日',
+      '交收日', '新挂', '涨停价格', '跌停价格', '前结算价', '合约调整',
+      '停牌', '合约总持仓', '挂牌原因', '原合约代码', '原合约简称',
+      '原行权价格', '原合约单位', '合约到期剩余交易天数', '合约到期剩余自然天数',
+      '下次合约调整剩余交易天数', '下次合约调整剩余自然天数', '交易日期',
+    ];
+
+    const toNum = (v: any): number | null => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const rows = jsonRows.map((item) => [
+      toNum(item['序号']),
+      item['合约编码'] ?? '',
+      item['合约代码'] ?? '',
+      item['合约简称'] ?? '',
+      item['标的证券简称(代码)'] ?? '',
+      item['合约类型'] ?? '',
+      toNum(item['行权价']),
+      toNum(item['合约单位']),
+      item['最后交易日'] ?? '',
+      item['行权日'] ?? '',
+      item['到期日'] ?? '',
+      item['交收日'] ?? '',
+      item['新挂'] ?? '',
+      toNum(item['涨停价格']),
+      toNum(item['跌停价格']),
+      toNum(item['前结算价']),
+      item['合约调整'] ?? '',
+      item['停牌'] ?? '',
+      toNum(item['合约总持仓']),
+      item['挂牌原因'] ?? '',
+      item['原合约代码'] ?? '',
+      item['原合约简称'] ?? '',
+      toNum(item['原行权价格']),
+      toNum(item['原合约单位']),
+      toNum(item['合约到期剩余交易天数']),
+      toNum(item['合约到期剩余自然天数']),
+      toNum(item['下次合约调整剩余交易天数']),
+      toNum(item['下次合约调整剩余自然天数']),
+      item['交易日期'] ?? '',
+    ]);
+
+    return createDataFrame(columns, rows);
+  } catch {
     return createDataFrame([], []);
   }
 }

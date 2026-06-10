@@ -142,7 +142,7 @@ function processEconomicData(dataList: any[]): DataFrame {
     timePeriod: '统计周期',
   };
 
-  const columns = ['日期', '时间', '国家', '地区', '事件', '统计周期', '公布', '预期', '前值', '重要性'];
+  const columns = ['日期', '时间', '地区', '事件', '公布', '预期', '前值', '重要性'];
 
   const rows = dataList.map(item => {
     const mapped: Record<string, any> = {};

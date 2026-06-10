@@ -80,57 +80,50 @@ export async function futures_zh_spot(
  * @param endDate 结束日期
  */
 export async function futures_zh_daily_sina(
-  symbol: string,
+  symbol: string = 'RB0',
   period: 'daily' | 'weekly' | 'monthly' = 'daily',
   startDate?: string,
   endDate?: string
 ): Promise<DataFrame> {
-  const periodMap: Record<string, string> = {
-    daily: '101',
-    weekly: '102',
-    monthly: '103',
-  };
+  const date = '20210412';
+  const url =
+    'https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20_V21052021_4_12=/InnerFuturesNewService.getDailyKLine';
 
-  const url = 'https://push2his.eastmoney.com/api/qt/stock/kline/get';
-  const params = {
-    fields1: 'f1,f2,f3,f4,f5,f6',
-    fields2: 'f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61',
-    klt: periodMap[period],
-    fqt: '1',
-    secid: `113.${symbol}`,
-    beg: startDate || '19700101',
-    end: endDate || '20500101',
-    lmt: '1000000',
-    _: Date.now(),
-  };
+  const text = await httpGet<any>(url, {
+    params: {
+      symbol,
+      type: `${date.slice(0, 4)}_${date.slice(4, 6)}_${date.slice(6, 8)}`,
+    },
+    responseType: 'text' as any,
+  });
 
-  const data = await httpGet<any>(url, { params });
-
-  if (!data?.data?.klines) {
+  const rawText = typeof text === 'string' ? text : String(text ?? '');
+  const jsonText = rawText.split('=(')[1]?.split(');')[0];
+  if (!jsonText) {
     return createDataFrame([], []);
   }
 
-  const columns = [
-    '日期', '开盘', '收盘', '最高', '最低', '成交量', '成交额',
-    '振幅', '涨跌幅', '涨跌额', '持仓量'
-  ];
+  const data = JSON.parse(jsonText);
+  if (!Array.isArray(data)) {
+    return createDataFrame([], []);
+  }
 
-  const rows = data.data.klines.map((item: string) => {
-    const parts = item.split(',');
-    return [
-      parts[0],
-      parseFloat(parts[1]),
-      parseFloat(parts[2]),
-      parseFloat(parts[3]),
-      parseFloat(parts[4]),
-      parseInt(parts[5]),
-      parseFloat(parts[6]),
-      parseFloat(parts[7]),
-      parseFloat(parts[8]),
-      parseFloat(parts[9]),
-      parseInt(parts[10]),
-    ];
-  });
+  const columns = ['date', 'open', 'high', 'low', 'close', 'volume', 'hold', 'settle'];
+  const toNum = (v: any): number | null => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const rows = data.map((item: any[]) => [
+    item[0],
+    toNum(item[1]),
+    toNum(item[2]),
+    toNum(item[3]),
+    toNum(item[4]),
+    toNum(item[5]),
+    toNum(item[6]),
+    toNum(item[7]),
+  ]);
 
   return createDataFrame(columns, rows);
 }
@@ -142,39 +135,46 @@ export async function futures_zh_daily_sina(
  * @param period 周期：1, 5, 15, 30, 60 分钟
  */
 export async function futures_zh_minute_sina(
-  symbol: string,
-  period: 1 | 5 | 15 | 30 | 60 = 5
+  symbol: string = 'IF2008',
+  period: 1 | 5 | 15 | 30 | 60 = 1
 ): Promise<DataFrame> {
-  const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get`;
-  const params = {
-    fields1: 'f1,f2,f3,f4,f5,f6',
-    fields2: 'f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61',
-    klt: period.toString(),
-    fqt: '1',
-    secid: `113.${symbol}`,
-    lmt: '1000',
-    _: Date.now(),
-  };
+  const text = await httpGet<any>(
+    'https://stock2.finance.sina.com.cn/futures/api/jsonp.php/=/InnerFuturesNewService.getFewMinLine',
+    {
+      params: {
+        symbol,
+        type: String(period),
+      },
+      responseType: 'text' as any,
+    }
+  );
 
-  const data = await httpGet<any>(url, { params });
-
-  if (!data?.data?.klines) {
+  const rawText = typeof text === 'string' ? text : String(text ?? '');
+  const jsonText = rawText.split('=(')[1]?.split(');')[0];
+  if (!jsonText) {
     return createDataFrame([], []);
   }
 
-  const columns = ['时间', '开盘', '收盘', '最高', '最低', '成交量', '成交额'];
-  const rows = data.data.klines.map((item: string) => {
-    const parts = item.split(',');
-    return [
-      parts[0],
-      parseFloat(parts[1]),
-      parseFloat(parts[2]),
-      parseFloat(parts[3]),
-      parseFloat(parts[4]),
-      parseInt(parts[5]),
-      parseFloat(parts[6]),
-    ];
-  });
+  const data = JSON.parse(jsonText);
+  if (!Array.isArray(data)) {
+    return createDataFrame([], []);
+  }
+
+  const columns = ['datetime', 'open', 'high', 'low', 'close', 'volume', 'hold'];
+  const toNum = (v: any): number | null => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const rows = data.map((item: any[]) => [
+    item[0],
+    toNum(item[1]),
+    toNum(item[2]),
+    toNum(item[3]),
+    toNum(item[4]),
+    toNum(item[5]),
+    toNum(item[6]),
+  ]);
 
   return createDataFrame(columns, rows);
 }

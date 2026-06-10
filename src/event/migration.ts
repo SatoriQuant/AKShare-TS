@@ -43,9 +43,9 @@ export async function migration_area_baidu(
 
   const responseText = await httpGetText(url, { params });
 
-  // 解析 JSONP 格式: callback({...});
+  // 解析 JSONP 格式: cb({...}) 或 cb({...});
   const jsonStart = responseText.indexOf('({');
-  const jsonEnd = responseText.lastIndexOf('});');
+  const jsonEnd = responseText.lastIndexOf('})');
   if (jsonStart === -1 || jsonEnd === -1) {
     return createDataFrame([], []);
   }
@@ -100,9 +100,9 @@ export async function migration_scale_baidu(
 
   const responseText = await httpGetText(url, { params });
 
-  // 解析 JSONP 格式
+  // 解析 JSONP 格式: cb({...}) 或 cb({...});
   const jsonStart = responseText.indexOf('({');
-  const jsonEnd = responseText.lastIndexOf('});');
+  const jsonEnd = responseText.lastIndexOf('})');
   if (jsonStart === -1 || jsonEnd === -1) {
     return createDataFrame([], []);
   }
@@ -116,10 +116,14 @@ export async function migration_scale_baidu(
 
   const listObj = dataJson.data.list as Record<string, string>;
   const columns = ['日期', '迁徙规模指数'];
-  const rows = Object.entries(listObj).map(([dateStr, value]) => [
-    dateStr,
-    Number(value) || 0,
-  ]);
+  const rows = Object.entries(listObj).map(([dateStr, value]) => {
+    // Convert YYYYMMDD to YYYY-MM-DD
+    const formattedDate = `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`;
+    return [
+      formattedDate,
+      String(value),
+    ];
+  });
 
   return createDataFrame(columns, rows);
 }

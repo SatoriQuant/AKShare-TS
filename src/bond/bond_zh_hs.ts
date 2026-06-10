@@ -2,11 +2,12 @@
  * AKShare TypeScript - 沪深债券数据接口
  */
 
-import { httpGet } from '../utils/httpClient';
+import { httpGet, httpGetText } from '../utils/httpClient';
 import {
   createDataFrame,
   DataFrame,
 } from '../utils/dataframe';
+import { decodeSinaData } from '../utils/jsDecode';
 
 /**
  * 获取沪深债券列表 - 东方财富
@@ -16,111 +17,136 @@ import {
 export async function bond_zh_hs_cov_spot(
   market: 'sh' | 'sz' = 'sh'
 ): Promise<DataFrame> {
-  const marketCode = market === 'sh' ? 'm:1+t:13' : 'm:0+t:13';
+  const countUrl =
+    'http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeStockCountSimple';
+  const dataUrl =
+    'http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData';
+  const node = market === 'sh' ? 'hskzz_z' : 'hskzz_z';
 
-  const url = 'https://79.push2.eastmoney.com/api/qt/clist/get';
-  const params = {
-    pn: '1',
-    pz: '1000',
-    po: '1',
-    np: '1',
-    ut: 'bd1d9ddb04089700cf9c27f6f7426281',
-    fltt: '2',
-    invt: '2',
-    fid: 'f3',
-    fs: marketCode,
-    fields: 'f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f12,f13,f14,f15,f16,f17,f18,f20,f21,f23,f24,f25,f22,f11,f62,f128,f136,f115,f152',
-    _: Date.now(),
-  };
+  try {
+    const countData = await httpGet<string>(countUrl, {
+      params: { node },
+      responseType: 'text' as any,
+    });
+    const countMatch = String(countData).match(/\d+/);
+    const total = countMatch ? parseInt(countMatch[0], 10) : 0;
+    const pageCount = total > 0 ? Math.ceil(total / 80) : 0;
+    if (pageCount <= 0) {
+      return createDataFrame([], []);
+    }
 
-  const data = await httpGet<any>(url, { params });
+    const records: any[] = [];
+    for (let page = 1; page <= pageCount; page++) {
+      try {
+        const pageData = await httpGet<any[]>(dataUrl, {
+          params: {
+            page: String(page),
+            num: '80',
+            sort: 'symbol',
+            asc: '1',
+            node,
+            _s_r_a: 'page',
+          },
+        });
+        if (Array.isArray(pageData) && pageData.length > 0) {
+          records.push(...pageData);
+        }
+      } catch {
+        continue;
+      }
+    }
 
-  if (!data?.data?.diff) {
+    if (records.length === 0) {
+      return createDataFrame([], []);
+    }
+
+    const columns = [
+      'symbol',
+      'name',
+      'trade',
+      'pricechange',
+      'changepercent',
+      'buy',
+      'sell',
+      'settlement',
+      'open',
+      'high',
+      'low',
+      'volume',
+      'amount',
+      'code',
+      'ticktime',
+    ];
+    const rows = records.map((item: any) => [
+      item?.symbol ?? '',
+      item?.name ?? '',
+      item?.trade ?? '',
+      item?.pricechange ?? '',
+      item?.changepercent ?? '',
+      item?.buy ?? '',
+      item?.sell ?? '',
+      item?.settlement ?? '',
+      item?.open ?? '',
+      item?.high ?? '',
+      item?.low ?? '',
+      item?.volume ?? '',
+      item?.amount ?? '',
+      item?.code ?? '',
+      item?.ticktime ?? '',
+    ]);
+    return createDataFrame(columns, rows);
+  } catch {
     return createDataFrame([], []);
   }
-
-  const columns = [
-    '债券代码', '债券名称', '最新价', '涨跌幅', '涨跌额', '成交量', '成交额',
-    '振幅', '换手率', '到期收益率'
-  ];
-
-  const rows = data.data.diff.map((item: any) => [
-    item.f12,  // 债券代码
-    item.f14,  // 债券名称
-    item.f2,   // 最新价
-    item.f3,   // 涨跌幅
-    item.f4,   // 涨跌额
-    item.f5,   // 成交量
-    item.f6,   // 成交额
-    item.f7,   // 振幅
-    item.f8,   // 换手率
-    item.f23,  // 到期收益率
-  ]);
-
-  return createDataFrame(columns, rows);
 }
 
 /**
- * 获取债券历史行情 - 东方财富
+ * 新浪财经-债券-沪深债券-历史行情数据
+ * https://vip.stock.finance.sina.com.cn/mkt/#hs_z
  *
- * @param symbol 债券代码
- * @param period 周期：daily, weekly, monthly
- * @param startDate 开始日期
- * @param endDate 结束日期
+ * @param symbol 沪深债券代码，如 sh010107
  */
 export async function bond_zh_hs_daily(
-  symbol: string,
-  period: 'daily' | 'weekly' | 'monthly' = 'daily',
-  startDate?: string,
-  endDate?: string
+  symbol: string = 'sh010107',
+  _period?: 'daily' | 'weekly' | 'monthly',
+  _startDate?: string,
+  _endDate?: string
 ): Promise<DataFrame> {
-  const market = symbol.startsWith('1') ? '1' : '0';
-  const periodMap: Record<string, string> = {
-    daily: '101',
-    weekly: '102',
-    monthly: '103',
-  };
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}_${String(now.getMonth() + 1).padStart(2, '0')}_${String(now.getDate()).padStart(2, '0')}`;
+  const url = `https://finance.sina.com.cn/realstock/company/${symbol}/hisdata/klc_kl.js?d=${dateStr}`;
 
-  const url = 'https://push2his.eastmoney.com/api/qt/stock/kline/get';
-  const params = {
-    fields1: 'f1,f2,f3,f4,f5,f6',
-    fields2: 'f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61',
-    klt: periodMap[period],
-    fqt: '1',
-    secid: `${market}.${symbol}`,
-    beg: startDate || '19700101',
-    end: endDate || '20500101',
-    lmt: '1000000',
-    _: Date.now(),
-  };
+  try {
+    const text = await httpGetText(url);
+    const encodedStr = String(text).split('=')[1]?.split(';')[0]?.replace(/"/g, '');
+    if (!encodedStr) {
+      return createDataFrame([], []);
+    }
 
-  const data = await httpGet<any>(url, { params });
+    const decoded = decodeSinaData(encodedStr);
+    if (!Array.isArray(decoded) || decoded.length === 0) {
+      return createDataFrame([], []);
+    }
 
-  if (!data?.data?.klines) {
+    const columns = Object.keys(decoded[0]);
+    const rows = decoded.map((item: any) => {
+      return columns.map((column) => {
+        if (column === 'date') {
+          const date = new Date(item?.date);
+          return Number.isNaN(date.getTime()) ? null : date.toISOString().split('T')[0];
+        }
+
+        if (column === 'open' || column === 'high' || column === 'low' || column === 'close') {
+          const value = Number(item?.[column]);
+          return Number.isNaN(value) ? null : value;
+        }
+
+        return item?.[column] ?? null;
+      });
+    });
+
+    return createDataFrame(columns, rows);
+  } catch {
     return createDataFrame([], []);
   }
-
-  const columns = [
-    '日期', '开盘', '收盘', '最高', '最低', '成交量', '成交额',
-    '振幅', '涨跌幅', '涨跌额', '换手率'
-  ];
-
-  const rows = data.data.klines.map((item: string) => {
-    const parts = item.split(',');
-    return [
-      parts[0],
-      parseFloat(parts[1]),
-      parseFloat(parts[2]),
-      parseFloat(parts[3]),
-      parseFloat(parts[4]),
-      parseInt(parts[5]),
-      parseFloat(parts[6]),
-      parseFloat(parts[7]),
-      parseFloat(parts[8]),
-      parseFloat(parts[9]),
-      parseFloat(parts[10]),
-    ];
-  });
-
-  return createDataFrame(columns, rows);
 }

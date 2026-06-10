@@ -3,6 +3,7 @@
  * https://vip.stock.finance.sina.com.cn/q/view/vFutures_Positions_cjcc.php
  */
 
+import axios from 'axios';
 import { httpGet } from '../utils/httpClient';
 import { createDataFrame, DataFrame } from '../utils/dataframe';
 
@@ -57,15 +58,30 @@ export async function futures_hold_pos_sina(
   const url = 'https://vip.stock.finance.sina.com.cn/q/view/vFutures_Positions_cjcc.php';
   const params = { t_breed: contract, t_date: formattedDate };
 
-  const html = await httpGet<string>(url, {
+  // Sina returns GBK-encoded HTML; fetch raw bytes and decode as GBK
+  const response = await axios.get(url, {
     params,
-    responseType: 'text' as any,
+    responseType: 'arraybuffer',
+    timeout: 30000,
+    headers: {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36',
+      Accept: 'text/html,*/*;q=0.8',
+    },
   });
 
+  const rawBuffer = Buffer.from(response.data as any);
+  let html = '';
+  try {
+    html = new TextDecoder('gbk').decode(rawBuffer);
+  } catch {
+    html = rawBuffer.toString('utf8');
+  }
+
   const symbolToTableIndex: Record<string, number> = {
-    '成交量': 2,
-    '多单持仓': 3,
-    '空单持仓': 4,
+    '成交量': 1,
+    '多单持仓': 2,
+    '空单持仓': 3,
   };
 
   const tableIndex = symbolToTableIndex[symbol];
@@ -84,17 +100,8 @@ export async function futures_hold_pos_sina(
   // 最后一行通常是汇总行，去掉
   const dataRows = allRows.slice(1, -1);
 
-  // 转换数值列
-  const rows = dataRows.map((row) =>
-    row.map((cell, idx) => {
-      // "名次"列和数值列尝试转换为数字
-      if (idx === 0 || idx >= 2) {
-        const num = parseFloat(cell);
-        if (!isNaN(num)) return num;
-      }
-      return cell;
-    })
-  );
+  // 保持所有值为字符串以匹配 Python 输出格式
+  const rows = dataRows;
 
   return createDataFrame(columns, rows);
 }
