@@ -293,3 +293,35 @@ export async function httpGetTextGbk(url: string, config?: RequestConfig): Promi
 export async function httpGetJson<T = any>(url: string, config?: RequestConfig): Promise<T> {
   return defaultHttpClient.getJson<T>(url, config);
 }
+
+/**
+ * 创建支持 legacy SSL renegotiation 的 axios 实例
+ * 用于需要 SSL_OP_LEGACY_SERVER_CONNECT 的服务器（如 human.amac.org.cn）
+ * 以及需要禁用证书验证的服务器（如 gs.amac.org.cn）
+ */
+import https from 'https';
+import crypto from 'crypto';
+
+// 用于 human.amac.org.cn 等需要 legacy renegotiation 的服务器
+const legacyRenegotiationAgent = new https.Agent({
+  secureOptions: crypto.constants.SSL_OP_LEGACY_SERVER_CONNECT,
+});
+
+// 用于 gs.amac.org.cn 等需要禁用证书验证的服务器
+const noVerifyAgent = new https.Agent({
+  rejectUnauthorized: false,
+});
+
+// 兼容两种情况的 agent
+const legacyHttpsAgent = new https.Agent({
+  secureOptions: crypto.constants.SSL_OP_LEGACY_SERVER_CONNECT,
+  rejectUnauthorized: false,
+});
+
+export function getLegacyHttpsAgent(): https.Agent {
+  return legacyHttpsAgent;
+}
+
+export function getNoVerifyAgent(): https.Agent {
+  return noVerifyAgent;
+}

@@ -277,6 +277,15 @@ export async function get_czce_receipt(
 }
 
 /**
+ * 郑州商品交易所-仓单日报（兼容别名）
+ */
+export async function futures_warehouse_receipt_czce(
+  date: string = '20251103'
+): Promise<DataFrame> {
+  return get_czce_receipt(date);
+}
+
+/**
  * 广州期货交易所-注册仓单数据
  * http://www.gfex.com.cn/gfex/cdrb/hqsj_tjsj.shtml
  *

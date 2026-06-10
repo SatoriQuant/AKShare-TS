@@ -28,6 +28,8 @@ export * from './stock_hot_xq';
 
 // 新增模块 - 盘口异动
 export * from './stock_pankou_em';
+// 缺失接口补充
+export * from './stock_missing';
 
 // 新增模块 - 机构调研
 export * from './stock_jgdy_em';

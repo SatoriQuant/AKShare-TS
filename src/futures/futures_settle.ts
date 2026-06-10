@@ -318,6 +318,72 @@ export async function futures_settle_gfex(date: string = '20260119'): Promise<Da
  * @param date 结算日期，格式 YYYYMMDD
  * @param market 交易所代码：CFFEX中金所, CZCE郑商所, SHFE上期所, INE上能中心, GFEX广期所
  */
+const SETTLE_OUTPUT_COLUMNS = [
+  'date', 'symbol', 'variety', 'settle_price',
+  'long_margin_ratio', 'short_margin_ratio',
+  'spec_long_margin_ratio', 'spec_short_margin_ratio',
+  'hedge_long_margin_ratio', 'hedge_short_margin_ratio',
+  'trade_fee_ratio', 'close_today_fee_ratio', 'delivery_fee_ratio',
+  'is_single_market', 'single_market_days',
+  'limit_ratio', 'position_limit', 'trade_limit',
+  'rise_limit_rate', 'fall_limit_rate',
+];
+
+function normalizeSettleColumns(df: DataFrame): DataFrame {
+  if (!df.data?.length) return createDataFrame(SETTLE_OUTPUT_COLUMNS, []);
+  const cols = df.columns;
+  const rows = df.data;
+  const fieldMapping: Record<string, string[]> = {
+    settle_price: ['settle_price', 'SETTLEMENTPRICE'],
+    long_margin_ratio: ['long_margin_ratio', 'margin_ratio', 'SPECLONGMARGINRATIO', 'specBuyRate', 'spec_buy_rate'],
+    short_margin_ratio: ['short_margin_ratio', 'SPECSHORTMARGINRATIO', 'hedgeBuyRate', 'hedge_buy_rate'],
+    spec_long_margin_ratio: ['spec_long_margin_ratio', 'SPECLONGMARGINRATIO', 'spec_buy_rate'],
+    spec_short_margin_ratio: ['spec_short_margin_ratio', 'SPECSHORTMARGINRATIO', 'hedge_buy_rate'],
+    hedge_long_margin_ratio: ['hedge_long_margin_ratio', 'HEDGLONGMARGINRATIO', 'hedge_buy_rate'],
+    hedge_short_margin_ratio: ['hedge_short_margin_ratio', 'HEDGSHORTMARGINRATIO', 'spec_buy_rate'],
+    trade_fee_ratio: ['trade_fee_ratio', 'TRADEFEERATIO'],
+    close_today_fee_ratio: ['close_today_fee_ratio', 'TTRADEFEERATIO'],
+    delivery_fee_ratio: ['delivery_fee_ratio', 'COMMODITYDELIVFEERATIO'],
+    is_single_market: ['is_single_market'],
+    single_market_days: ['single_market_days'],
+    limit_ratio: ['limit_ratio'],
+    position_limit: ['position_limit', 'clientBuyPosiQuota', 'client_buy_posi_quota'],
+    trade_limit: ['trade_limit'],
+    rise_limit_rate: ['rise_limit_rate', 'riseLimitRate'],
+    fall_limit_rate: ['fall_limit_rate', 'fallLimit'],
+  };
+
+  const colIdx: Record<string, number> = {};
+  cols.forEach((c, i) => { colIdx[c] = i; });
+
+  const newRows = rows.map((row) => {
+    const result: any[] = [];
+    for (const targetCol of SETTLE_OUTPUT_COLUMNS) {
+      if (colIdx[targetCol] !== undefined) {
+        result.push(row[colIdx[targetCol]]);
+      } else if (targetCol === 'variety' && colIdx['symbol'] !== undefined) {
+        const sym = String(row[colIdx['symbol']] ?? '');
+        const m = sym.match(/^([A-Za-z]+)/);
+        result.push(m ? m[1] : '');
+      } else {
+        const sources = fieldMapping[targetCol] ?? [];
+        let found = false;
+        for (const src of sources) {
+          if (colIdx[src] !== undefined) {
+            result.push(row[colIdx[src]]);
+            found = true;
+            break;
+          }
+        }
+        if (!found) result.push(null);
+      }
+    }
+    return result;
+  });
+
+  return createDataFrame(SETTLE_OUTPUT_COLUMNS, newRows);
+}
+
 export async function futures_settle(
   date: string = '20260119',
   market: 'CFFEX' | 'CZCE' | 'SHFE' | 'INE' | 'GFEX' = 'CFFEX'
@@ -332,8 +398,9 @@ export async function futures_settle(
 
   const func = marketFuncMap[market.toUpperCase()];
   if (!func) {
-    return createDataFrame([], []);
+    return createDataFrame(SETTLE_OUTPUT_COLUMNS, []);
   }
 
-  return func(date);
+  const df = await func(date);
+  return normalizeSettleColumns(df);
 }

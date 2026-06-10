@@ -70,6 +70,16 @@ export async function stock_zh_b_spot(
 }
 
 /**
+ * 新浪财经-B股实时行情（兼容别名）
+ */
+export async function stock_zh_b_spot_em(
+  page: number = 1,
+  pageSize: number = 80
+): Promise<DataFrame> {
+  return stock_zh_b_spot(page, pageSize);
+}
+
+/**
  * 新浪财经-B股历史行情数据
  * https://finance.sina.com.cn/realstock/company/sh900901/nc.shtml
  *

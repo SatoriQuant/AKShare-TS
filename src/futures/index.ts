@@ -52,5 +52,7 @@ export * from './futures_comex_em';
 export * from './futures_settlement_price_sgx';
 // 大宗商品现货价格及基差
 export * from './futures_basis';
+// 期货持仓排名
+export * from './futures_rank';
 // 展期收益率
 export * from './futures_roll_yield';

@@ -5,6 +5,7 @@
 
 import { httpGet, httpGetText, httpGetTextGbk } from '../utils/httpClient';
 import { createDataFrame, DataFrame } from '../utils/dataframe';
+import { load } from 'cheerio';
 
 /**
  * 新浪财经-财务报表-三大报表
@@ -261,6 +262,90 @@ export async function stock_financial_analysis_indicator_em(
   const rows = resultData.map((item: any) => columns.map(col => item[col]));
 
   return createDataFrame(columns, rows);
+}
+
+/**
+ * 东方财富-A股-财务分析-主要指标（兼容别名）
+ */
+export async function stock_financial_analysis_indicator(
+  symbol: string = '600004',
+  start_year: string = '1900'
+): Promise<DataFrame> {
+  try {
+    // First get available years
+    const url = `https://money.finance.sina.com.cn/corp/go.php/vFD_FinancialGuideLine/stockid/${symbol}/ctrl/2020/displaytype/4.phtml`;
+    const html = await httpGetTextGbk(url, { headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://finance.sina.com.cn/' } });
+    const $ = load(html);
+    const yearContext = $('#con02-1 table a');
+    const yearList: string[] = [];
+    yearContext.each((_, el) => {
+      const text = $(el).text().trim();
+      if (/^\d{4}$/.test(text)) yearList.push(text);
+    });
+
+    // Filter years by start_year
+    let filteredYears = yearList;
+    if (start_year !== '1900' && yearList.includes(start_year)) {
+      filteredYears = yearList.slice(0, yearList.indexOf(start_year) + 1);
+    }
+
+    if (!filteredYears.length) return createDataFrame([], []);
+
+    const allRows: any[][] = [];
+    let columns: string[] = [];
+
+    for (const year of filteredYears) {
+      const yearUrl = `https://money.finance.sina.com.cn/corp/go.php/vFD_FinancialGuideLine/stockid/${symbol}/ctrl/${year}/displaytype/4.phtml`;
+      const yearHtml = await httpGetTextGbk(yearUrl, { headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://finance.sina.com.cn/' } });
+      const $y = load(yearHtml);
+
+      // Find the main data table (usually the 13th table)
+      const tables = $y('table');
+      if (tables.length < 13) continue;
+
+      const dataTable = tables.eq(12);
+      const trs = dataTable.find('tr');
+
+      // First row is headers
+      if (!columns.length && trs.length > 0) {
+        const headerRow = trs.eq(0);
+        const ths = headerRow.find('td');
+        ths.each((_: any, td: any) => {
+          const text = $y(td).text().trim();
+          if (text) columns.push(text);
+        });
+      }
+
+      // Data rows
+      for (let i = 1; i < trs.length; i++) {
+        const row = trs.eq(i);
+        const tds = row.find('td');
+        if (tds.length < 2) continue;
+        const rowData: any[] = [];
+        tds.each((_: any, td: any) => {
+          const text = $y(td).text().trim();
+          rowData.push(text);
+        });
+        if (rowData.length > 0 && rowData[0]) {
+          allRows.push(rowData);
+        }
+      }
+    }
+
+    if (!allRows.length || !columns.length) return createDataFrame([], []);
+
+    // Normalize column names - first column should be 日期
+    if (columns[0] !== '日期') columns[0] = '日期';
+
+    // Ensure all rows have same number of columns
+    const maxCols = columns.length;
+    const normalizedRows = allRows.map(r => {
+      while (r.length < maxCols) r.push('');
+      return r.slice(0, maxCols);
+    });
+
+    return createDataFrame(columns, normalizedRows);
+  } catch { return createDataFrame([], []); }
 }
 
 /**

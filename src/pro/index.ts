@@ -5,4 +5,4 @@
  * 提供期货商品、席位、指数、基本面等专业数据
  */
 
-export { proApi, setProToken, getProToken } from './data_pro';
+export { proApi, setProToken, getProToken, pro_api, set_token, get_token } from './data_pro';

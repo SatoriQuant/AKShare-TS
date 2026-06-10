@@ -248,6 +248,18 @@ export async function stock_zh_index_daily_em(
 }
 
 /**
+ * 指数历史行情（兼容别名）
+ */
+export async function stock_zh_index_daily(
+  symbol: string = 'csi931151',
+  period: 'daily' | 'weekly' | 'monthly' = 'daily',
+  startDate: string = '19900101',
+  endDate: string = '20500101'
+): Promise<DataFrame> {
+  return stock_zh_index_daily_em(symbol, period, startDate, endDate);
+}
+
+/**
  * 获取指数成分股 - 东方财富
  *
  * @param symbol 指数代码

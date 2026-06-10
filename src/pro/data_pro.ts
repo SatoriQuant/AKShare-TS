@@ -20,10 +20,24 @@ export function setProToken(token: string): void {
 }
 
 /**
+ * 设置 Pro API Token（兼容别名）
+ */
+export function set_token(token: string): void {
+  setProToken(token);
+}
+
+/**
  * 获取当前 Pro API Token
  */
 export function getProToken(): string {
   return globalToken;
+}
+
+/**
+ * 获取当前 Pro API Token（兼容别名）
+ */
+export function get_token(): string {
+  return getProToken();
 }
 
 /**
@@ -46,4 +60,11 @@ export function proApi(token: string = ''): DataApi {
       'api init error. 请设置 AKShare pro 的 token 凭证码，如果没有权限，请访问 https://qhkch.com/ 注册申请'
     );
   }
+}
+
+/**
+ * 初始化 Pro API 客户端（兼容别名）
+ */
+export function pro_api(token: string = ''): DataApi {
+  return proApi(token);
 }

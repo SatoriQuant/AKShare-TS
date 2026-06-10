@@ -28,6 +28,8 @@ export * from './bond_gb_sina';
 
 // 新浪财经可转债数据接口
 export * from './bond_cb_sina';
+// 可转债缺失接口
+export * from './bond_cov_missing';
 
 // 同花顺可转债数据接口
 export * from './bond_cb_ths';

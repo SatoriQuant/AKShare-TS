@@ -125,6 +125,13 @@ export async function stock_zh_ah_spot(): Promise<DataFrame> {
 }
 
 /**
+ * 腾讯财经-AH股-实时行情（兼容别名）
+ */
+export async function stock_zh_ah_spot_em(): Promise<DataFrame> {
+  return stock_zh_ah_spot();
+}
+
+/**
  * 腾讯财经-AH股-股票名称
  * https://stockapp.finance.qq.com/mstats/#mod=list&id=hk_ah&module=HK&type=AH
  */

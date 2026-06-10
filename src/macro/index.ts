@@ -4,3 +4,4 @@
 
 export * from './macro_china';
 export * from './macro_usa';
+export * from '../economic/macro_missing';
